@@ -34,7 +34,11 @@
       "Bash(cp /Users/bret/side-projects/ksp-controller-mod/README.md \"/Users/bret/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/GameData/ControllerEverywhere/README.md\")",
       "Bash(zip -qr ControllerEverywhere-0.1.0.zip GameData/ControllerEverywhere -x \"*.DS_Store\")",
       "Bash(shasum -a 256 \"/Users/bret/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/GameData/ControllerEverywhere/Plugins/ControllerEverywhere.dll\" GameData/ControllerEverywhere/Plugins/ControllerEverywhere.dll src/bin/Release/ControllerEverywhere.dll)",
-      "Bash(grep -iE \"^\\(ActionGroup|SAS_|RCS_|Gear_|Stage_|UIStateToggle|NavBall\\)[A-Za-z]*$\")"
+      "Bash(grep -iE \"^\\(ActionGroup|SAS_|RCS_|Gear_|Stage_|UIStateToggle|NavBall\\)[A-Za-z]*$\")",
+      "Bash(pip3 install *)",
+      "Bash(python3 -)",
+      "Bash(cp /Users/bret/side-projects/ksp-controller-mod/GameData/ControllerEverywhere/controller.cfg \"/Users/bret/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/GameData/ControllerEverywhere/controller.cfg\")",
+      "Bash(shasum -a 256 ControllerEverywhere-0.1.0.zip)"
     ]
   }
 }

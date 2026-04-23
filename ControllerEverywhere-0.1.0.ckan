@@ -15,10 +15,10 @@
     "bugtracker": "https://github.com/bretm9/ksp-controller-everywhere/issues"
   },
   "download": "https://github.com/bretm9/ksp-controller-everywhere/releases/download/v0.1.0/ControllerEverywhere-0.1.0.zip",
-  "download_size": 25803,
+  "download_size": 27515,
   "download_hash": {
-    "sha1":   "664039F1E76E9E6018331957AB983C26D912D6DB",
-    "sha256": "1DCEE1954435BEA7997AF57B9E2225695F1204A2370501F9267DE9AEBBD55578"
+    "sha1":   "EE7F4E7E3F9F68CD5725FF36CEA295C83D61580C",
+    "sha256": "528BC803562341B44C5ED2A8000B37B3A539455A2B3766DCAAAC0E62465228A9"
   },
   "install": [
     {

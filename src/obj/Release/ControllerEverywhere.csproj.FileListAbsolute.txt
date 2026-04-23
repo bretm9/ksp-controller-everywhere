@@ -5,3 +5,4 @@
 /Users/bret/side-projects/ksp-controller-mod/src/bin/Release/ControllerEverywhere.pdb
 /Users/bret/side-projects/ksp-controller-mod/src/obj/Release/ControllerEverywhere.dll
 /Users/bret/side-projects/ksp-controller-mod/src/obj/Release/ControllerEverywhere.pdb
+/Users/bret/side-projects/ksp-controller-mod/src/obj/Release/ControllerEverywhere.sourcelink.json

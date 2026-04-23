@@ -5,9 +5,10 @@ using UnityEngine.UI;
 
 namespace ControllerEverywhere
 {
-    // Detects open Part Action Windows and drives dpad+A/B navigation through
-    // their uGUI Selectables. Flight axes (left stick, triggers, bumpers, right
-    // stick camera) remain live so the player can pilot while menuing.
+    // Drives dpad + A/B navigation through open Part Action Windows. KSP's PAW
+    // controls don't have reliable Unity Selectable navigation set up, so we
+    // manually enumerate the interactable Selectables inside the top window,
+    // sort them top-to-bottom and left-to-right, and step through the list.
     internal static class PAWNavigator
     {
         public static bool AnyOpen =>
@@ -15,87 +16,134 @@ namespace ControllerEverywhere
             UIPartActionController.Instance.windows != null &&
             UIPartActionController.Instance.windows.Count > 0;
 
+        // Current focus — a GameObject inside a PAW. Nulled when PAW closes.
+        public static GameObject Focused;
+
         private static float _repeatTimer;
         private static Vector2 _lastNav;
+        private static UIPartActionWindow _lastTopWindow;
+        private static readonly List<Selectable> _scratch = new List<Selectable>();
 
         public static void Tick(ControllerInput.Pad p)
         {
-            EnsureFocusInsidePAW();
+            var ctrl = UIPartActionController.Instance;
+            if (ctrl == null || ctrl.windows == null || ctrl.windows.Count == 0)
+            {
+                Focused = null;
+                return;
+            }
+            var top = ctrl.windows[ctrl.windows.Count - 1];
+            if (top == null) return;
 
-            // DPad-only nav (left stick stays for flight)
-            var es = EventSystem.current;
-            if (es == null) return;
+            // Rebuild selectable list if the top window changed or our focus died
+            if (top != _lastTopWindow || Focused == null || !IsInsideWindow(Focused, top))
+            {
+                _lastTopWindow = top;
+                var list = EnumerateSelectables(top);
+                Focused = list.Count > 0 ? list[0].gameObject : null;
+            }
 
+            // DPad nav with initial delay + repeat
             Vector2 nav = p.Dpad;
             bool hasDir = nav.sqrMagnitude > 0.25f;
-
-            const float RepeatInitial = 0.4f, RepeatInterval = 0.12f;
+            const float RepeatInitial = 0.4f, RepeatInterval = 0.15f;
             if (hasDir)
             {
                 bool justPressed = _lastNav.sqrMagnitude <= 0.25f;
                 _repeatTimer -= Time.unscaledDeltaTime;
                 if (justPressed || _repeatTimer <= 0f)
                 {
-                    Move(nav);
+                    Navigate(top, nav);
                     _repeatTimer = justPressed ? RepeatInitial : RepeatInterval;
                 }
             }
             else _repeatTimer = 0f;
             _lastNav = nav;
 
-            // A = submit (click the focused button/toggle/slider).
-            if (ControllerInput.Pressed(s => s.A))
-            {
-                var sel = es.currentSelectedGameObject;
-                if (sel != null)
-                {
-                    var data = new BaseEventData(es);
-                    ExecuteEvents.Execute(sel, data, ExecuteEvents.submitHandler);
-                    var btn = sel.GetComponent<Button>();
-                    if (btn != null && btn.IsInteractable()) btn.onClick.Invoke();
-                }
-            }
+            // Sliders: let triggers nudge the focused slider's value
+            float triggerDelta = p.RightTrigger - p.LeftTrigger;
+            if (Mathf.Abs(triggerDelta) > 0.1f) NudgeSlider(triggerDelta * Time.unscaledDeltaTime);
 
-            // B = close the top-most PAW.
+            // A = click / submit
+            if (ControllerInput.Pressed(s => s.A)) Fire();
+
+            // B = close PAW
             if (ControllerInput.Pressed(s => s.B)) CloseTop();
         }
 
-        private static void Move(Vector2 dir)
+        public static void ClearOnClose()
         {
-            var es = EventSystem.current;
-            var sel = es.currentSelectedGameObject;
-            if (sel == null) { EnsureFocusInsidePAW(); return; }
-            var data = new AxisEventData(es) { moveVector = dir };
-            float ax = Mathf.Abs(dir.x), ay = Mathf.Abs(dir.y);
-            data.moveDir = ax > ay
-                ? (dir.x > 0 ? MoveDirection.Right : MoveDirection.Left)
-                : (dir.y > 0 ? MoveDirection.Up    : MoveDirection.Down);
-            ExecuteEvents.Execute(sel, data, ExecuteEvents.moveHandler);
+            if (!AnyOpen) { Focused = null; _lastTopWindow = null; }
         }
 
-        // Put EventSystem focus on the top-most PAW's first interactable Selectable
-        // if focus isn't already inside one.
-        private static void EnsureFocusInsidePAW()
+        // ---- Selectable enumeration --------------------------------------------
+        private static List<Selectable> EnumerateSelectables(UIPartActionWindow window)
         {
-            var ctrl = UIPartActionController.Instance;
-            if (ctrl == null || ctrl.windows == null || ctrl.windows.Count == 0) return;
-            var es = EventSystem.current;
-            if (es == null) return;
-
-            var top = ctrl.windows[ctrl.windows.Count - 1];
-            if (top == null) return;
-
-            var cur = es.currentSelectedGameObject;
-            if (cur != null && cur.transform.IsChildOf(top.transform)) return;
-
-            foreach (var sel in top.GetComponentsInChildren<Selectable>(false))
+            _scratch.Clear();
+            foreach (var sel in window.GetComponentsInChildren<Selectable>(false))
             {
                 if (sel != null && sel.IsInteractable() && sel.gameObject.activeInHierarchy)
-                {
-                    es.SetSelectedGameObject(sel.gameObject);
-                    return;
-                }
+                    _scratch.Add(sel);
             }
+            // Sort by screen-space Y descending (top to bottom) then X ascending.
+            _scratch.Sort((a, b) =>
+            {
+                var pa = a.transform.position;
+                var pb = b.transform.position;
+                if (Mathf.Abs(pa.y - pb.y) > 2f) return pa.y > pb.y ? -1 : 1;
+                return pa.x < pb.x ? -1 : 1;
+            });
+            return _scratch;
+        }
+
+        private static void Navigate(UIPartActionWindow window, Vector2 dir)
+        {
+            var list = EnumerateSelectables(window);
+            if (list.Count == 0) { Focused = null; return; }
+
+            int idx = Focused != null ? list.FindIndex(s => s.gameObject == Focused) : -1;
+            if (idx < 0) { Focused = list[0].gameObject; return; }
+
+            if (dir.y > 0.5f)       idx = Mathf.Max(idx - 1, 0);            // up
+            else if (dir.y < -0.5f) idx = Mathf.Min(idx + 1, list.Count - 1); // down
+            else if (dir.x < -0.5f) idx = Mathf.Max(idx - 1, 0);            // left
+            else if (dir.x > 0.5f)  idx = Mathf.Min(idx + 1, list.Count - 1); // right
+
+            Focused = list[idx].gameObject;
+        }
+
+        private static void Fire()
+        {
+            if (Focused == null) return;
+            // Prefer direct Button.onClick for Unity buttons — some PAW buttons
+            // don't route through the submitHandler.
+            var btn = Focused.GetComponent<Button>();
+            if (btn != null && btn.IsInteractable()) { btn.onClick.Invoke(); return; }
+
+            var tog = Focused.GetComponent<Toggle>();
+            if (tog != null && tog.IsInteractable()) { tog.isOn = !tog.isOn; return; }
+
+            var es = EventSystem.current;
+            if (es != null)
+            {
+                es.SetSelectedGameObject(Focused);
+                ExecuteEvents.Execute(Focused, new BaseEventData(es), ExecuteEvents.submitHandler);
+            }
+        }
+
+        private static void NudgeSlider(float amount)
+        {
+            if (Focused == null) return;
+            var sl = Focused.GetComponent<Slider>();
+            if (sl == null || !sl.IsInteractable()) return;
+            float range = sl.maxValue - sl.minValue;
+            sl.value = Mathf.Clamp(sl.value + amount * range * 0.5f, sl.minValue, sl.maxValue);
+        }
+
+        private static bool IsInsideWindow(GameObject go, UIPartActionWindow window)
+        {
+            if (go == null || window == null) return false;
+            return go.transform.IsChildOf(window.transform);
         }
 
         private static void CloseTop()
@@ -105,6 +153,36 @@ namespace ControllerEverywhere
             var top = ctrl.windows[ctrl.windows.Count - 1];
             if (top != null) Reflector.Set(top, "pinned", false);
             ctrl.Deselect(false);
+            Focused = null;
+            _lastTopWindow = null;
+        }
+
+        // ---- Highlight box ------------------------------------------------------
+        public static void DrawHighlight()
+        {
+            if (Focused == null) return;
+            var rt = Focused.GetComponent<RectTransform>();
+            if (rt == null) return;
+
+            var canvas = rt.GetComponentInParent<Canvas>();
+            Camera cam = canvas != null ? canvas.worldCamera : null;
+
+            var corners = new Vector3[4];
+            rt.GetWorldCorners(corners);
+            for (int i = 0; i < 4; i++)
+                corners[i] = RectTransformUtility.WorldToScreenPoint(cam, corners[i]);
+
+            float minX = Mathf.Min(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+            float maxX = Mathf.Max(corners[0].x, corners[1].x, corners[2].x, corners[3].x);
+            float minY = Mathf.Min(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+            float maxY = Mathf.Max(corners[0].y, corners[1].y, corners[2].y, corners[3].y);
+
+            // IMGUI Y flip
+            float iy = Screen.height - maxY;
+            float ih = maxY - minY;
+            var rect = new Rect(minX - 2f, iy - 2f, (maxX - minX) + 4f, ih + 4f);
+
+            UiDraw.Outline(rect, new Color(0.6f, 1f, 0.4f, 1f), 2f);
         }
     }
 }

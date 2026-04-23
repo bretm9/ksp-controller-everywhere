@@ -4,35 +4,30 @@ using UnityEngine;
 
 namespace ControllerEverywhere
 {
-    // A single config file at GameData/ControllerEverywhere/controller.cfg
-    // keyed by dot-separated section.key lines. Kept deliberately simple — no
-    // dependency on KSP's own config writer so it loads in any scene.
     internal static class Bindings
     {
-        public static float CameraYawSpeed   = 90f;   // deg/sec at full stick deflection
+        public static float CameraYawSpeed   = 90f;
         public static float CameraPitchSpeed = 60f;
-        public static float CameraZoomRate   = 4f;    // distance units/sec (flight), relative rate (map)
+        public static float CameraZoomRate   = 4f;
+
         public static float StickDeadzone    = 0.15f;
         public static float TriggerDeadzone  = 0.05f;
         public static bool  InvertLY         = true;
         public static bool  InvertRY         = true;
         public static bool  TriggersBipolar  = false;
 
-        public static float EditorCamMoveSpeed = 4f;  // m/s for left-stick translate in VAB/SPH
-        public static float EditorPartRotateStep = 5f; // degrees per bumper press
+        public static float EditorCamMoveSpeed = 4f;
+        public static float EditorPartRotateStep = 5f;
 
-        // Optional axis-name overrides
-        public static string AxisLX, AxisLY, AxisRX, AxisRY, AxisLT, AxisRT, AxisDX, AxisDY;
+        // Numeric axis indices (0..19). -1 on DX/DY falls back to buttons.
+        public static int JoystickIndex = 0;
+        public static int AxisLX = 0, AxisLY = 1, AxisRX = 3, AxisRY = 4;
+        public static int AxisLT = 8, AxisRT = 9, AxisDX = 5, AxisDY = 6;
 
-        public static string ConfigPath
-        {
-            get
-            {
-                // KSPUtil.ApplicationRootPath is the KSP install dir
-                var root = KSPUtil.ApplicationRootPath;
-                return Path.Combine(root, "GameData/ControllerEverywhere/controller.cfg");
-            }
-        }
+        public static bool DebugOverlay = false;
+
+        public static string ConfigPath =>
+            Path.Combine(KSPUtil.ApplicationRootPath, "GameData/ControllerEverywhere/controller.cfg");
 
         public static void Load()
         {
@@ -66,24 +61,25 @@ namespace ControllerEverywhere
 
         private static void Push()
         {
-            ControllerInput.StickDeadzone   = StickDeadzone;
-            ControllerInput.TriggerDeadzone = TriggerDeadzone;
-            ControllerInput.InvertLY        = InvertLY;
-            ControllerInput.InvertRY        = InvertRY;
+            ControllerInput.JoystickIndex      = JoystickIndex;
+            ControllerInput.AxisLX             = AxisLX;
+            ControllerInput.AxisLY             = AxisLY;
+            ControllerInput.AxisRX             = AxisRX;
+            ControllerInput.AxisRY             = AxisRY;
+            ControllerInput.AxisLT             = AxisLT;
+            ControllerInput.AxisRT             = AxisRT;
+            ControllerInput.AxisDX             = AxisDX;
+            ControllerInput.AxisDY             = AxisDY;
+            ControllerInput.StickDeadzone      = StickDeadzone;
+            ControllerInput.TriggerDeadzone    = TriggerDeadzone;
+            ControllerInput.InvertLY           = InvertLY;
+            ControllerInput.InvertRY           = InvertRY;
             ControllerInput.TriggersAreBipolar = TriggersBipolar;
-            ControllerInput.OverrideLX = string.IsNullOrEmpty(AxisLX) ? null : AxisLX;
-            ControllerInput.OverrideLY = string.IsNullOrEmpty(AxisLY) ? null : AxisLY;
-            ControllerInput.OverrideRX = string.IsNullOrEmpty(AxisRX) ? null : AxisRX;
-            ControllerInput.OverrideRY = string.IsNullOrEmpty(AxisRY) ? null : AxisRY;
-            ControllerInput.OverrideLT = string.IsNullOrEmpty(AxisLT) ? null : AxisLT;
-            ControllerInput.OverrideRT = string.IsNullOrEmpty(AxisRT) ? null : AxisRT;
-            ControllerInput.OverrideDX = string.IsNullOrEmpty(AxisDX) ? null : AxisDX;
-            ControllerInput.OverrideDY = string.IsNullOrEmpty(AxisDY) ? null : AxisDY;
         }
 
         private static void Apply(string k, string v)
         {
-            float f; bool b;
+            float f; bool b; int i;
             switch (k)
             {
                 case "camera.yawSpeed":   if (float.TryParse(v, out f)) CameraYawSpeed = f; break;
@@ -91,19 +87,21 @@ namespace ControllerEverywhere
                 case "camera.zoomRate":   if (float.TryParse(v, out f)) CameraZoomRate = f; break;
                 case "input.stickDeadzone":   if (float.TryParse(v, out f)) StickDeadzone = f; break;
                 case "input.triggerDeadzone": if (float.TryParse(v, out f)) TriggerDeadzone = f; break;
-                case "input.invertLY": if (bool.TryParse(v, out b)) InvertLY = b; break;
-                case "input.invertRY": if (bool.TryParse(v, out b)) InvertRY = b; break;
-                case "input.triggersBipolar": if (bool.TryParse(v, out b)) TriggersBipolar = b; break;
-                case "editor.moveSpeed":   if (float.TryParse(v, out f)) EditorCamMoveSpeed = f; break;
-                case "editor.rotateStep":  if (float.TryParse(v, out f)) EditorPartRotateStep = f; break;
-                case "axis.LX": AxisLX = v; break;
-                case "axis.LY": AxisLY = v; break;
-                case "axis.RX": AxisRX = v; break;
-                case "axis.RY": AxisRY = v; break;
-                case "axis.LT": AxisLT = v; break;
-                case "axis.RT": AxisRT = v; break;
-                case "axis.DX": AxisDX = v; break;
-                case "axis.DY": AxisDY = v; break;
+                case "input.invertLY":        if (bool.TryParse(v, out b))  InvertLY = b; break;
+                case "input.invertRY":        if (bool.TryParse(v, out b))  InvertRY = b; break;
+                case "input.triggersBipolar": if (bool.TryParse(v, out b))  TriggersBipolar = b; break;
+                case "input.debugOverlay":    if (bool.TryParse(v, out b))  DebugOverlay = b; break;
+                case "editor.moveSpeed":      if (float.TryParse(v, out f)) EditorCamMoveSpeed = f; break;
+                case "editor.rotateStep":     if (float.TryParse(v, out f)) EditorPartRotateStep = f; break;
+                case "axis.joystick":         if (int.TryParse(v, out i)) JoystickIndex = i; break;
+                case "axis.LX": if (int.TryParse(v, out i)) AxisLX = i; break;
+                case "axis.LY": if (int.TryParse(v, out i)) AxisLY = i; break;
+                case "axis.RX": if (int.TryParse(v, out i)) AxisRX = i; break;
+                case "axis.RY": if (int.TryParse(v, out i)) AxisRY = i; break;
+                case "axis.LT": if (int.TryParse(v, out i)) AxisLT = i; break;
+                case "axis.RT": if (int.TryParse(v, out i)) AxisRT = i; break;
+                case "axis.DX": if (int.TryParse(v, out i)) AxisDX = i; break;
+                case "axis.DY": if (int.TryParse(v, out i)) AxisDY = i; break;
             }
         }
 
@@ -111,45 +109,56 @@ namespace ControllerEverywhere
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             var s = @"# ControllerEverywhere bindings
-# Left stick = pitch/yaw (flight) or translate (editor) or UI nav (menus)
-# Right stick = camera look EVERYWHERE (your request)
-# Triggers   = throttle down/up (flight) or zoom in/out (other scenes)
-# Bumpers    = roll left/right (flight) or prev/next (editor, tracking)
-# DPad       = trim / action group / menu nav
-# A          = stage (flight) / confirm (menus) / place part (editor)
-# B          = cancel / back
-# X          = toggle SAS (flight) / symmetry cycle (editor)
-# Y          = toggle RCS (flight) / angle snap cycle (editor)
-# LS click   = toggle precision mode (flight)
-# RS click   = toggle map view (flight) / cycle camera mode
-# Start      = pause menu
-# Back       = toggle nav ball / quick action
-# Home       = toggle mod UI
 
+# --- Camera ---
 camera.yawSpeed   = 90
 camera.pitchSpeed = 60
 camera.zoomRate   = 4
 
+# --- Input ---
 input.stickDeadzone   = 0.15
 input.triggerDeadzone = 0.05
 input.invertLY = true
 input.invertRY = true
-# Set this to true if your triggers idle at -1 (most Mac controllers) instead of 0
-input.triggersBipolar = true
+# Windows (XInput) triggers idle at 0 → keep this false.
+# Mac / bipolar controllers idle at -1 → set to true.
+input.triggersBipolar = false
 
+# Toggle the debug axis/button overlay (also toggled in-game via LS + RS + Back chord).
+input.debugOverlay = false
+
+# --- Editor ---
 editor.moveSpeed  = 4
 editor.rotateStep = 5
 
-# Axis name overrides — only set these if auto-probe picks wrong names.
-# Uncomment and edit if controller input doesn't work:
-# axis.LX = Joystick1 Axis 1
-# axis.LY = Joystick1 Axis 2
-# axis.RX = Joystick1 Axis 4
-# axis.RY = Joystick1 Axis 5
-# axis.LT = Joystick1 Axis 3
-# axis.RT = Joystick1 Axis 6
-# axis.DX = Joystick1 Axis 7
-# axis.DY = Joystick1 Axis 8
+# --- Joystick axis mapping ---
+# KSP exposes each joystick's axes as integers 0-19. Which physical control
+# lives at which index depends on OS + controller + driver. Defaults below are
+# for Xbox controller on Windows (XInput). Set an axis to -1 to disable it;
+# DX/DY set to -1 falls back to reading DPad as buttons.
+#
+# To calibrate on an unknown controller: set input.debugOverlay=true (or press
+# LS + RS + Back in flight), then wiggle each stick/trigger and note which
+# axis index lights up.
+
+axis.joystick = 0
+
+# Xbox / XInput defaults (Windows):
+axis.LX = 0      # left stick X
+axis.LY = 1      # left stick Y
+axis.RX = 3      # right stick X
+axis.RY = 4      # right stick Y
+axis.LT = 8      # left trigger (0..1)
+axis.RT = 9      # right trigger (0..1)
+axis.DX = 5      # d-pad X
+axis.DY = 6      # d-pad Y
+
+# Common alternatives:
+# Mac Xbox controller (355e driver):
+#   axis.LT = 4, axis.RT = 5, axis.DX = -1, axis.DY = -1, triggersBipolar = true
+# DualShock 4 on Windows (DS4Windows in XInput mode): same as Xbox defaults.
+# DirectInput fallback (old wheels / generic HID):
+#   try axis.RX = 2, axis.RY = 3 and experiment.
 ";
             File.WriteAllText(path, s);
         }

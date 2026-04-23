@@ -56,6 +56,9 @@ namespace ControllerEverywhere
             ControllerInput.Poll();
             var p = ControllerInput.Current;
 
+            // Debug overlay chord (LS + RS + Back held ~0.5s)
+            DebugOverlay.Poll(p);
+
             // Radial menu owns the right stick while open — run first so we can
             // gate camera/RS handling below.
             bool radialActive = _radial.Update(p);
@@ -230,7 +233,13 @@ namespace ControllerEverywhere
                 inMap:  MapView.MapIsEnabled,
                 inPaw:  PAWNavigator.AnyOpen);
 
+            // Highlight box around the currently-focused PAW selectable
+            if (PAWNavigator.AnyOpen) PAWNavigator.DrawHighlight();
+
             _radial.OnGUI();
+
+            // Debug axis readout on top of everything
+            DebugOverlay.Draw();
         }
 
         // ---- OnFlyByWire (fly-axis driver) -------------------------------------
