@@ -12,7 +12,7 @@ namespace ControllerEverywhere
     //   - Highlight box on the focused PAW control (drawn by PAWNavigator)
     internal static class HudHints
     {
-        public enum Mode { Flight, Map, BackMod, BackModMap, Paw, Radial, AgWheel }
+        public enum Mode { Flight, Map, BackMod, BackModMap, Paw, Radial, AgWheel, Cursor }
 
         private static List<ActionGroupToggleButton> _agToggles = new List<ActionGroupToggleButton>();
         private static VesselAutopilotUI _sasUi;
@@ -22,13 +22,14 @@ namespace ControllerEverywhere
         private static GUIStyle _badgeStyle;
         private static GUIStyle _stripStyle;
 
-        public static void Draw(bool inBackMod, bool inMap, bool inPaw, bool agOpen, bool radialOpen)
+        public static void Draw(bool inBackMod, bool inMap, bool inPaw, bool agOpen, bool radialOpen, bool cursor)
         {
             EnsureStyles();
             RefreshRefs();
 
             Mode mode;
-            if      (radialOpen) mode = Mode.Radial;
+            if      (cursor)     mode = Mode.Cursor;
+            else if (radialOpen) mode = Mode.Radial;
             else if (agOpen)     mode = Mode.AgWheel;
             else if (inBackMod && inMap) mode = Mode.BackModMap;
             else if (inBackMod)  mode = Mode.BackMod;
@@ -85,6 +86,7 @@ namespace ControllerEverywhere
                 case Mode.Paw:        text = "PART MENU";         color = new Color(0.5f, 1f, 0.6f, 1f);  break;
                 case Mode.Radial:     text = "ACTION WHEEL";      color = new Color(1f, 0.8f, 0.4f, 1f);  break;
                 case Mode.AgWheel:    text = "ACTION GROUPS";     color = new Color(0.9f, 0.7f, 1f, 1f);  break;
+                case Mode.Cursor:     text = "CURSOR";            color = new Color(1f, 0.9f, 0.3f, 1f);  break;
                 default:              text = "FLIGHT";            color = Color.white;                     break;
             }
 
@@ -130,6 +132,8 @@ namespace ControllerEverywhere
               "<b>Right stick</b> select slice  <b>release RS</b> or <b>A</b> confirm  <b>B</b> cancel" },
             { Mode.AgWheel,
               "<b>Right stick</b> select AG 1-8  <b>A</b> fire  <b>B</b> cancel" },
+            { Mode.Cursor,
+              "<b>R-stick</b> (or <b>L-stick</b>) move cursor  <b>A</b> click  <b>B</b> cancel / close dialog" },
         };
 
         private static void DrawKeyStrip(Mode mode)

@@ -111,6 +111,10 @@ namespace ControllerEverywhere
 
             DebugOverlay.Poll(p);
 
+            // Virtual cursor for PopupDialog-style menus (pause, confirmation, etc.)
+            // Auto-activates whenever a stock PopupDialog is visible.
+            bool cursorActive = VirtualCursor.Update(p);
+
             // Radials. Action wheel on RS-held (same as before), AG wheel latched.
             bool radialActive = _actionRadial.Update(p) | _agRadial.Update(p);
 
@@ -121,8 +125,9 @@ namespace ControllerEverywhere
                 if (Mathf.Abs(p.RightTrigger - p.LeftTrigger) > 0.05f) _lsUsedAsChord = true;
             }
 
-            // Camera. Right stick + LS-chord zoom (unchanged).
-            if (!radialActive)
+            // Camera. Right stick + LS-chord zoom (unchanged). Suppressed when
+            // the radial or cursor owns the stick.
+            if (!radialActive && !cursorActive)
             {
                 float zoom = p.LS ? (p.RightTrigger - p.LeftTrigger) : 0f;
                 CameraControl.Flight(p.RightStick, zoom, Time.unscaledDeltaTime);
@@ -136,6 +141,9 @@ namespace ControllerEverywhere
             if (_actionRadial.ConsumePendingMapToggle()) ToggleMapView();
 
             if (radialActive) return;
+            // While the virtual cursor is active, skip flight dispatch — the
+            // player is in a menu and A/B are being consumed by cursor clicks.
+            if (cursorActive) return;
 
             if (backModifier)
             {
@@ -351,12 +359,14 @@ namespace ControllerEverywhere
                 inMap:     MapView.MapIsEnabled,
                 inPaw:     PAWNavigator.AnyOpen,
                 agOpen:    _agRadial.IsOpen,
-                radialOpen:_actionRadial.IsOpen);
+                radialOpen:_actionRadial.IsOpen,
+                cursor:    VirtualCursor.Active);
 
             if (PAWNavigator.AnyOpen) PAWNavigator.DrawHighlight();
 
             _actionRadial.OnGUI();
             _agRadial.OnGUI();
+            VirtualCursor.Draw();
 
             DebugOverlay.Draw();
         }

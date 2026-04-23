@@ -4,7 +4,7 @@
   "name": "ControllerEverywhere",
   "abstract": "Console-inspired controller layout for KSP 1.12 — DPad SAS, trigger throttle, bumper roll, map-mode maneuver editor, radial action wheels, PAW navigation, on-screen mode badge and key strip, and a built-in calibration overlay.",
   "author": "bretm9",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "ksp_version_min": "1.12",
   "ksp_version_max": "1.12.5",
   "license": "unknown",
@@ -14,11 +14,11 @@
     "repository": "https://github.com/bretm9/ksp-controller-everywhere",
     "bugtracker": "https://github.com/bretm9/ksp-controller-everywhere/issues"
   },
-  "download": "https://github.com/bretm9/ksp-controller-everywhere/releases/download/v0.4.0/ControllerEverywhere-0.4.0.zip",
-  "download_size": 28910,
+  "download": "https://github.com/bretm9/ksp-controller-everywhere/releases/download/v0.4.1/ControllerEverywhere-0.4.1.zip",
+  "download_size": 29785,
   "download_hash": {
-    "sha1":   "7DCB75C3028FF6202B9362DC91AC63E49676BF64",
-    "sha256": "5F6909FAB5BEC2358DF4560DB9E4EE79969166C3E2CA7A649835B4F209338282"
+    "sha1":   "ED38FE9B6899E08624B1A7F2CF7545D11886CD8F",
+    "sha256": "D38D4200F264C66C549FC80DD05EA08302A43CA1744E5B476673CD07386737BA"
   },
   "install": [
     {
