@@ -117,22 +117,23 @@ namespace ControllerEverywhere
               "<b>A</b> stage  <b>B</b> cancel  <b>X</b> part menu  <b>Y</b> map  " +
               "<b>L-stick</b> pitch/yaw  <b>R-stick</b> camera  " +
               "<b>LT/RT</b> throttle  <b>LB/RB</b> roll  " +
-              "<b>DPad</b> SAS (Pro/Retro/Nrm/Anti)  " +
+              "<b>DPad ↑↓</b> time warp  <b>DPad ←→</b> SAS Pro/Retro  " +
               "<b>LS</b> SAS on/off  <b>RS</b> RCS on/off  <b>RS hold</b> wheel  " +
-              "<b>Back tap</b> Action Groups  <b>Back hold</b> modifier  <b>Start</b> pause" },
+              "<b>Back tap</b> AGs  <b>Back hold</b> extended  <b>Start</b> pause" },
             { Mode.Map,
-              "<b>A</b> +node  <b>B</b> −node  <b>X</b> part menu  <b>Y</b> exit map  " +
-              "<b>LB/RB</b> cycle nodes  <b>LT/RT</b> throttle  <b>DPad</b> SAS  " +
-              "<b>LS</b> SAS  <b>RS</b> RCS  <b>Back hold</b> → fine-tune maneuver" },
+              "<b>A</b> create node  <b>B</b> exit map  <b>X</b> part menu  <b>Y</b> exit map  " +
+              "<b>LB/RB</b> prev/next node  <b>LT/RT</b> throttle  " +
+              "<b>DPad ↑↓</b> time warp  <b>DPad ←→</b> SAS Pro/Retro  " +
+              "<b>LS</b> SAS  <b>RS</b> RCS  <b>Back hold</b> fine-tune maneuver" },
             { Mode.BackMod,
-              "<b>A</b> Stability  <b>B</b> Abort  <b>X</b> Maneuver  <b>Y</b> toggle IVA  " +
-              "<b>DPad ↑↓</b> Radial in/out  <b>DPad ←→</b> time warp  " +
+              "<b>A</b> Stability Assist  <b>B</b> Abort  <b>X</b> Maneuver  <b>Y</b> toggle IVA  " +
+              "<b>DPad ↑↓</b> Radial In/Out  <b>DPad ←→</b> Normal/Antinormal  " +
               "<b>LB/RB</b> Target/Anti-Target  <b>LT/RT</b> quick load/save  " +
               "<b>LS</b> precision  <b>RS</b> camera mode" },
             { Mode.BackModMap,
               "<b>DPad ↑↓</b> pro/retro dV  <b>DPad ←→</b> normal/anti dV  " +
               "<b>LT/RT</b> radial in/out dV  <b>LB/RB</b> UT earlier/later  " +
-              "<b>Y</b> exit map" },
+              "<b>A</b> delete node  <b>Y</b> exit map" },
             { Mode.Paw,
               "<b>DPad</b> navigate (green box = focus)  <b>A</b> click  " +
               "<b>B</b> close  <b>LT/RT</b> adjust slider" },
@@ -145,10 +146,10 @@ namespace ControllerEverywhere
             { Mode.Eva,
               "<b>L-stick</b> walk / jetpack dir  <b>R-stick</b> camera  <b>LB/RB</b> roll  " +
               "<b>A</b> jump  <b>B</b> board airlock/seat  <b>X</b> plant flag  <b>Y</b> toggle jetpack  " +
-              "<b>DPad</b> SAS  <b>LS</b> SAS on/off  <b>RS</b> helmet lamp  " +
-              "<b>Back hold</b> kerbal modifier" },
+              "<b>DPad ↑↓</b> time warp  <b>DPad ←→</b> SAS Pro/Retro  " +
+              "<b>LS</b> SAS on/off  <b>RS</b> helmet lamp  <b>Back hold</b> kerbal modifier" },
             { Mode.BackModEva,
-              "<b>X</b> next kerbal  <b>Y</b> let go / ladder hint  (all other Back-held bindings work as normal)" },
+              "<b>X</b> next kerbal  <b>Y</b> toggle jetpack  (all other Back-held bindings work as normal)" },
         };
 
         private static void DrawKeyStrip(Mode mode)
@@ -207,22 +208,22 @@ namespace ControllerEverywhere
             }
         }
 
-        // In console layout the Back-modifier picks the extended SAS modes.
-        // Primary modes (Pro/Retro/Normal/Antinormal) are plain DPad — show them
-        // during Back-hold since that's when all ten markers are relevant.
+        // DPad ←→ = SAS Prograde / Retrograde (primary). All other modes are
+        // reached via the Back-held modifier. Glyphs are drawn next to each
+        // SAS marker so the player can read them at a glance.
         private static string SasGlyphFor(VesselAutopilot.AutopilotMode m)
         {
             switch (m)
             {
-                case VesselAutopilot.AutopilotMode.StabilityAssist: return "Back+A";
-                case VesselAutopilot.AutopilotMode.Prograde:        return "DPad ↑";
-                case VesselAutopilot.AutopilotMode.Retrograde:      return "DPad ↓";
-                case VesselAutopilot.AutopilotMode.Normal:          return "DPad ←";
-                case VesselAutopilot.AutopilotMode.Antinormal:      return "DPad →";
+                case VesselAutopilot.AutopilotMode.Prograde:        return "DPad ←";
+                case VesselAutopilot.AutopilotMode.Retrograde:      return "DPad →";
+                case VesselAutopilot.AutopilotMode.Normal:          return "Back+←";
+                case VesselAutopilot.AutopilotMode.Antinormal:      return "Back+→";
                 case VesselAutopilot.AutopilotMode.RadialIn:        return "Back+↑";
                 case VesselAutopilot.AutopilotMode.RadialOut:       return "Back+↓";
                 case VesselAutopilot.AutopilotMode.Target:          return "Back+LB";
                 case VesselAutopilot.AutopilotMode.AntiTarget:      return "Back+RB";
+                case VesselAutopilot.AutopilotMode.StabilityAssist: return "Back+A";
                 case VesselAutopilot.AutopilotMode.Maneuver:        return "Back+X";
                 default: return null;
             }

@@ -182,14 +182,16 @@ namespace ControllerEverywhere
             if (ControllerInput.Pressed(s => s.A))    Stage();
             if (ControllerInput.Pressed(s => s.X))    FlightActions.ToggleReticlePAW();
             if (ControllerInput.Pressed(s => s.Y))    ToggleMapView();
-            // B: close any open dialog — PAW handled in its own dispatch, radial handled above.
-            // Currently a no-op in pure flight, reserved for "cancel".
+            // B: no-op in pure flight. PAW / cursor / map each handle B in
+            // their own dispatch to mean "close / cancel / back".
 
-            // SAS modes directly on DPad (primary 4)
-            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Prograde);
-            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Retrograde);
-            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Normal);
-            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Antinormal);
+            // DPad: time warp up/down + primary SAS modes (the two most used).
+            // Extended SAS modes (Normal/Antinormal, Radial In/Out, Target,
+            // Stability, Maneuver) live under the Back-held modifier.
+            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) FlightActions.WarpFaster();
+            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) FlightActions.WarpSlower();
+            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Prograde);
+            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Retrograde);
 
             // LS toggles SAS on release (so LS-hold-for-zoom doesn't also fire SAS).
             if (ControllerInput.Released(s => s.LS))
@@ -214,11 +216,9 @@ namespace ControllerEverywhere
 
             if (EvaActions.IsActive)
             {
-                // Back modifier while on EVA: kerbal-specific quick actions
-                // layered on top of the standard time warp + quick save/load
-                // + camera mode bindings below.
+                // EVA-specific Back chords layered over the common modifier set.
                 if (ControllerInput.Pressed(s => s.X)) { EvaActions.NextKerbal(); consumed = true; }
-                if (ControllerInput.Pressed(s => s.Y)) { EvaActions.ToggleLadder(); consumed = true; }
+                if (ControllerInput.Pressed(s => s.Y)) { EvaActions.ToggleJetpack(); consumed = true; }
                 // Fall through for the common modifier set (warp / save / SAS).
             }
 
@@ -228,31 +228,35 @@ namespace ControllerEverywhere
                 float dt = Time.fixedDeltaTime > 0 ? Time.fixedDeltaTime : Time.unscaledDeltaTime;
                 float rate = 1.5f;
 
-                // Back + DPad ↑↓ = prograde / retrograde dV nudge (continuous)
+                // Back + DPad ↑↓ = prograde / retrograde dV nudge (continuous).
                 if (p.Dpad.y >  0.5f) { FlightActions.NudgeNode(0, 0, +rate * dt, 0); consumed = true; }
                 if (p.Dpad.y < -0.5f) { FlightActions.NudgeNode(0, 0, -rate * dt, 0); consumed = true; }
-                // Back + DPad ←→ = normal / antinormal dV
+                // Back + DPad ←→ = normal / antinormal dV.
                 if (p.Dpad.x >  0.5f) { FlightActions.NudgeNode(0, +rate * dt, 0, 0); consumed = true; }
                 if (p.Dpad.x < -0.5f) { FlightActions.NudgeNode(0, -rate * dt, 0, 0); consumed = true; }
-                // Back + triggers = radial dV
+                // Back + triggers = radial dV.
                 float radialIn  = p.RightTrigger - p.LeftTrigger;
                 if (Mathf.Abs(radialIn) > 0.05f) { FlightActions.NudgeNode(radialIn * rate * dt, 0, 0, 0); consumed = true; }
-                // Back + bumpers = UT earlier/later
+                // Back + bumpers = UT earlier / later.
                 if (p.LB) { FlightActions.NudgeNode(0, 0, 0, -5f * dt); consumed = true; }
                 if (p.RB) { FlightActions.NudgeNode(0, 0, 0, +5f * dt); consumed = true; }
 
-                // Back + Y = exit map
+                // Back + A in map = delete selected node (vs Stability Assist
+                // elsewhere). More useful while editing a burn.
+                if (ControllerInput.Pressed(s => s.A)) { FlightActions.DeleteSelectedNode(); consumed = true; }
+                // Back + Y = exit map (same as Y alone; provided for muscle memory).
                 if (ControllerInput.Pressed(s => s.Y)) { ToggleMapView(); consumed = true; }
                 return consumed;
             }
 
-            // Non-map Back modifier
-
-            // Extended SAS modes
+            // Non-map Back modifier — extended SAS modes on DPad.
+            // (Time warp is now direct on DPad ↑↓ without the modifier; the
+            // dpad under Back is therefore free for the 4 SAS modes that
+            // didn't fit the primary direct bindings.)
             if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) { SetSas(VesselAutopilot.AutopilotMode.RadialIn);   consumed = true; }
             if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) { SetSas(VesselAutopilot.AutopilotMode.RadialOut);  consumed = true; }
-            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) { FlightActions.WarpSlower(); consumed = true; }
-            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) { FlightActions.WarpFaster(); consumed = true; }
+            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) { SetSas(VesselAutopilot.AutopilotMode.Normal);     consumed = true; }
+            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) { SetSas(VesselAutopilot.AutopilotMode.Antinormal); consumed = true; }
 
             if (ControllerInput.Pressed(s => s.A)) { SetSas(VesselAutopilot.AutopilotMode.StabilityAssist); consumed = true; }
             if (ControllerInput.Pressed(s => s.B)) { Toggle(KSPActionGroup.Abort); consumed = true; }
@@ -279,10 +283,11 @@ namespace ControllerEverywhere
         // ---- Map view: additive on top of normal flight -----------------------
         private void DispatchMapMode(ControllerInput.Pad p)
         {
-            // Face buttons — replace stage/gear with node create/delete since
-            // you rarely stage from the map screen.
+            // Face buttons — A creates nodes (stage is rare in map); B acts as
+            // "back" and exits map (console convention); X opens PAW; Y also
+            // exits map (matches flight toggle).
             if (ControllerInput.Pressed(s => s.A)) FlightActions.CreateManeuverNode();
-            if (ControllerInput.Pressed(s => s.B)) FlightActions.DeleteSelectedNode();
+            if (ControllerInput.Pressed(s => s.B)) ToggleMapView();
             if (ControllerInput.Pressed(s => s.X)) FlightActions.ToggleReticlePAW();
             if (ControllerInput.Pressed(s => s.Y)) ToggleMapView();
 
@@ -290,11 +295,11 @@ namespace ControllerEverywhere
             if (ControllerInput.Pressed(s => s.LB)) FlightActions.CycleNode(-1);
             if (ControllerInput.Pressed(s => s.RB)) FlightActions.CycleNode(+1);
 
-            // DPad = SAS modes (same as normal) — useful while lining up a burn.
-            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Prograde);
-            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Retrograde);
-            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Normal);
-            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Antinormal);
+            // DPad: same console scheme as flight — warp + primary SAS.
+            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) FlightActions.WarpFaster();
+            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) FlightActions.WarpSlower();
+            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Prograde);
+            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Retrograde);
 
             // Stick clicks — same release-based behavior as normal mode.
             if (ControllerInput.Released(s => s.LS))
@@ -330,11 +335,11 @@ namespace ControllerEverywhere
 
             // Bumpers — LB/RB still roll the kerbal (useful in jetpack).
 
-            // DPad SAS modes still work (kerbals have autopilot when jetpack on).
-            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Prograde);
-            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Retrograde);
-            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Normal);
-            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Antinormal);
+            // DPad: time warp + primary SAS (matches flight).
+            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) FlightActions.WarpFaster();
+            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) FlightActions.WarpSlower();
+            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Prograde);
+            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Retrograde);
 
             // Stick clicks: LS toggles SAS on release (tap-vs-chord), RS toggles
             // the helmet lamp (kerbals don't have RCS; lamp is the useful thing).
