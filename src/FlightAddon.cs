@@ -144,7 +144,18 @@ namespace ControllerEverywhere
             // player is in a menu and A/B are being consumed by cursor clicks.
             if (cursorActive) return;
 
-            if (backModifier)
+            // LS-hold is now the SAS modifier (was Back). Check for chord input
+            // *before* normal dispatch so DPad doesn't also fire warp when the
+            // user is picking an extended SAS mode.
+            if (!backModifier && p.LS && DispatchLsSasModifier(p))
+            {
+                _lsUsedAsChord = true;
+                // Keep running PAW / EVA / Map / Normal too? No — chord fired,
+                // skip the rest so one input doesn't do two things.
+                // On release the chord flag suppresses the SAS toggle tap.
+                // Fall through to the Back-release handler below.
+            }
+            else if (backModifier)
             {
                 if (DispatchBackModifier(p)) _backConsumed = true;
             }
@@ -208,6 +219,24 @@ namespace ControllerEverywhere
             if (ControllerInput.Pressed(s => s.Start)) TogglePauseMenu();
         }
 
+        // ---- LS-held: extended SAS mode picker ---------------------------------
+        // Holding LS and pressing a button/dpad dir picks one of the 8 SAS modes
+        // that don't fit the direct DPad←→ (Pro / Retro). On release without any
+        // chord, LS is a plain SAS toggle (handled in DispatchNormalMode/etc.).
+        private bool DispatchLsSasModifier(ControllerInput.Pad p)
+        {
+            bool consumed = false;
+            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) { SetSas(VesselAutopilot.AutopilotMode.RadialIn);   consumed = true; }
+            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) { SetSas(VesselAutopilot.AutopilotMode.RadialOut);  consumed = true; }
+            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) { SetSas(VesselAutopilot.AutopilotMode.Normal);     consumed = true; }
+            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) { SetSas(VesselAutopilot.AutopilotMode.Antinormal); consumed = true; }
+            if (ControllerInput.Pressed(s => s.A))  { SetSas(VesselAutopilot.AutopilotMode.StabilityAssist); consumed = true; }
+            if (ControllerInput.Pressed(s => s.X))  { SetSas(VesselAutopilot.AutopilotMode.Maneuver);        consumed = true; }
+            if (ControllerInput.Pressed(s => s.LB)) { SetSas(VesselAutopilot.AutopilotMode.Target);          consumed = true; }
+            if (ControllerInput.Pressed(s => s.RB)) { SetSas(VesselAutopilot.AutopilotMode.AntiTarget);      consumed = true; }
+            return consumed;
+        }
+
         // ---- Back-held modifier -------------------------------------------------
         // Returns true if anything was consumed this frame (locks Back into modifier mode).
         private bool DispatchBackModifier(ControllerInput.Pad p)
@@ -249,24 +278,17 @@ namespace ControllerEverywhere
                 return consumed;
             }
 
-            // Non-map Back modifier — extended SAS modes on DPad.
-            // (Time warp is now direct on DPad ↑↓ without the modifier; the
-            // dpad under Back is therefore free for the 4 SAS modes that
-            // didn't fit the primary direct bindings.)
-            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) { SetSas(VesselAutopilot.AutopilotMode.RadialIn);   consumed = true; }
-            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) { SetSas(VesselAutopilot.AutopilotMode.RadialOut);  consumed = true; }
-            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) { SetSas(VesselAutopilot.AutopilotMode.Normal);     consumed = true; }
-            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) { SetSas(VesselAutopilot.AutopilotMode.Antinormal); consumed = true; }
-
-            if (ControllerInput.Pressed(s => s.A)) { SetSas(VesselAutopilot.AutopilotMode.StabilityAssist); consumed = true; }
-            if (ControllerInput.Pressed(s => s.B)) { Toggle(KSPActionGroup.Abort); consumed = true; }
-            if (ControllerInput.Pressed(s => s.X)) { SetSas(VesselAutopilot.AutopilotMode.Maneuver); consumed = true; }
+            // Non-map Back modifier — utility chords only. All SAS modes moved
+            // to the LS-held modifier, so Back is now pure "meta actions":
+            // abort, IVA, quick save/load, precision, camera mode, vessel switch.
+            if (ControllerInput.Pressed(s => s.A)) { Toggle(KSPActionGroup.Abort); consumed = true; }
+            if (ControllerInput.Pressed(s => s.B)) { Toggle(KSPActionGroup.Gear); consumed = true; }
+            if (ControllerInput.Pressed(s => s.X)) { Toggle(KSPActionGroup.Light); consumed = true; }
             if (ControllerInput.Pressed(s => s.Y)) { FlightActions.ToggleIVA(); consumed = true; }
-            if (ControllerInput.Pressed(s => s.LB)) { SetSas(VesselAutopilot.AutopilotMode.Target); consumed = true; }
-            if (ControllerInput.Pressed(s => s.RB)) { SetSas(VesselAutopilot.AutopilotMode.AntiTarget); consumed = true; }
+            if (ControllerInput.Pressed(s => s.LB)) { FlightActions.SwitchVessel(-1); consumed = true; }
+            if (ControllerInput.Pressed(s => s.RB)) { FlightActions.SwitchVessel(+1); consumed = true; }
 
             // Triggers = quick load (LT) / quick save (RT) on press edge — but triggers are analog.
-            // Use a threshold to detect "new pull" without holding.
             if (p.LeftTrigger  > 0.6f && ControllerInput.Previous.LeftTrigger  <= 0.6f) { FlightActions.QuickLoad(); consumed = true; }
             if (p.RightTrigger > 0.6f && ControllerInput.Previous.RightTrigger <= 0.6f) { FlightActions.QuickSave(); consumed = true; }
 

@@ -16,9 +16,11 @@ namespace ControllerEverywhere
 
         private static List<ActionGroupToggleButton> _agToggles = new List<ActionGroupToggleButton>();
         private static VesselAutopilotUI _sasUi;
+        private static UnityEngine.UI.Button _mapToggleBtn;
         private static float _refreshTimer;
 
-        private static GUIStyle _glyphStyle;
+        private static GUIStyle _glyphStyleSmall;
+        private static GUIStyle _glyphStyleBig;
         private static GUIStyle _badgeStyle;
         private static GUIStyle _stripStyle;
 
@@ -42,40 +44,64 @@ namespace ControllerEverywhere
             DrawModeBadge(mode);
             DrawKeyStrip(mode);
             DrawToggleGlyphs();
-            // Always draw SAS mode glyphs — the DPad bindings are direct (no
-            // modifier) so the player should see them at all times, and the
-            // extended-mode chords (Back+A etc.) are helpful to see even when
-            // Back isn't held.
             DrawSasModeGlyphs();
+            DrawMapToggleGlyph();
         }
 
         private static void EnsureStyles()
         {
-            if (_glyphStyle == null)
+            if (_glyphStyleSmall == null)
             {
-                _glyphStyle = new GUIStyle(GUI.skin.label)
-                { alignment = TextAnchor.MiddleCenter, fontSize = 12, fontStyle = FontStyle.Bold };
+                _glyphStyleSmall = new GUIStyle(GUI.skin.label)
+                { alignment = TextAnchor.MiddleCenter, fontSize = 11, fontStyle = FontStyle.Bold };
+            }
+            if (_glyphStyleBig == null)
+            {
+                _glyphStyleBig = new GUIStyle(GUI.skin.label)
+                { alignment = TextAnchor.MiddleCenter, fontSize = 16, fontStyle = FontStyle.Bold };
             }
             if (_badgeStyle == null)
             {
                 _badgeStyle = new GUIStyle(GUI.skin.label)
-                { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+                { fontSize = 17, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
             }
             if (_stripStyle == null)
             {
                 _stripStyle = new GUIStyle(GUI.skin.label)
-                { fontSize = 12, alignment = TextAnchor.MiddleCenter, richText = true, wordWrap = true };
+                { fontSize = 14, alignment = TextAnchor.MiddleCenter, richText = true, wordWrap = true };
             }
         }
 
         private static void RefreshRefs()
         {
             _refreshTimer -= Time.unscaledDeltaTime;
-            if (_refreshTimer > 0f && _agToggles.Count > 0 && _sasUi != null) return;
+            if (_refreshTimer > 0f && _agToggles.Count > 0 && _sasUi != null && _mapToggleBtn != null) return;
             _refreshTimer = 1.0f;
             _agToggles.Clear();
             _agToggles.AddRange(UnityEngine.Object.FindObjectsOfType<ActionGroupToggleButton>());
             _sasUi = UnityEngine.Object.FindObjectOfType<VesselAutopilotUI>();
+            FindMapToggleButton();
+        }
+
+        // Scan active Buttons for one whose GameObject name looks like the
+        // altimeter's map-view toggle (varies across KSP patches — look for
+        // several common names).
+        private static void FindMapToggleButton()
+        {
+            _mapToggleBtn = null;
+            foreach (var btn in UnityEngine.Object.FindObjectsOfType<UnityEngine.UI.Button>())
+            {
+                if (btn == null || !btn.gameObject.activeInHierarchy) continue;
+                string n = btn.gameObject.name;
+                if (string.IsNullOrEmpty(n)) continue;
+                string lower = n.ToLower();
+                if ((lower.Contains("map") && (lower.Contains("view") || lower.Contains("toggle") || lower.Contains("btn")))
+                    || lower == "mapviewbutton")
+                {
+                    _mapToggleBtn = btn;
+                    return;
+                }
+            }
         }
 
         // ---- Mode badge --------------------------------------------------------
@@ -118,17 +144,17 @@ namespace ControllerEverywhere
               "<b>L-stick</b> pitch/yaw  <b>R-stick</b> camera  " +
               "<b>LT/RT</b> throttle  <b>LB/RB</b> roll  " +
               "<b>DPad ↑↓</b> time warp  <b>DPad ←→</b> SAS Pro/Retro  " +
-              "<b>LS</b> SAS on/off  <b>RS</b> RCS on/off  <b>RS hold</b> wheel  " +
-              "<b>Back tap</b> AGs  <b>Back hold</b> extended  <b>Start</b> pause" },
+              "<b>LS tap</b> SAS on/off  <b>LS hold</b> extended SAS modes  " +
+              "<b>RS</b> RCS on/off  <b>RS hold</b> action wheel  " +
+              "<b>Back tap</b> AGs  <b>Back hold</b> meta  <b>Start</b> pause" },
             { Mode.Map,
               "<b>A</b> create node  <b>B</b> exit map  <b>X</b> part menu  <b>Y</b> exit map  " +
               "<b>LB/RB</b> prev/next node  <b>LT/RT</b> throttle  " +
               "<b>DPad ↑↓</b> time warp  <b>DPad ←→</b> SAS Pro/Retro  " +
-              "<b>LS</b> SAS  <b>RS</b> RCS  <b>Back hold</b> fine-tune maneuver" },
+              "<b>LS hold</b> extended SAS  <b>Back hold</b> fine-tune maneuver" },
             { Mode.BackMod,
-              "<b>A</b> Stability Assist  <b>B</b> Abort  <b>X</b> Maneuver  <b>Y</b> toggle IVA  " +
-              "<b>DPad ↑↓</b> Radial In/Out  <b>DPad ←→</b> Normal/Antinormal  " +
-              "<b>LB/RB</b> Target/Anti-Target  <b>LT/RT</b> quick load/save  " +
+              "<b>A</b> Abort  <b>B</b> Toggle Gear  <b>X</b> Toggle Lights  <b>Y</b> Toggle IVA  " +
+              "<b>LB/RB</b> prev/next vessel  <b>LT/RT</b> quick load/save  " +
               "<b>LS</b> precision  <b>RS</b> camera mode" },
             { Mode.BackModMap,
               "<b>DPad ↑↓</b> pro/retro dV  <b>DPad ←→</b> normal/anti dV  " +
@@ -165,20 +191,25 @@ namespace ControllerEverywhere
         }
 
         // ---- Per-button glyphs on flight toggles -------------------------------
-        private static readonly Dictionary<KSPActionGroup, string> _toggleLabels = new Dictionary<KSPActionGroup, string>
+        // SAS / RCS stay small (they're next to small circular icons).
+        // Custom AGs + gear/brakes/lights/abort get the bigger glyph since
+        // those panels are roomier.
+        private static readonly Dictionary<KSPActionGroup, (string label, bool big)> _toggleLabels =
+            new Dictionary<KSPActionGroup, (string, bool)>
         {
-            { KSPActionGroup.SAS,  "LS"  },
-            { KSPActionGroup.RCS,  "RS"  },
-            // Gear no longer has a direct binding (it was on B; B is now cancel).
-            // Custom AGs reachable via Back-tap wheel:
-            { KSPActionGroup.Custom01, "Back⏎" },
-            { KSPActionGroup.Custom02, "Back⏎" },
-            { KSPActionGroup.Custom03, "Back⏎" },
-            { KSPActionGroup.Custom04, "Back⏎" },
-            { KSPActionGroup.Custom05, "Back⏎" },
-            { KSPActionGroup.Custom06, "Back⏎" },
-            { KSPActionGroup.Custom07, "Back⏎" },
-            { KSPActionGroup.Custom08, "Back⏎" },
+            { KSPActionGroup.SAS,      ("LS",        false) },
+            { KSPActionGroup.RCS,      ("RS",        false) },
+            { KSPActionGroup.Gear,     ("Back+B",    true)  },
+            { KSPActionGroup.Light,    ("Back+X",    true)  },
+            { KSPActionGroup.Abort,    ("Back+A",    true)  },
+            { KSPActionGroup.Custom01, ("Back⏎ wheel", true) },
+            { KSPActionGroup.Custom02, ("Back⏎ wheel", true) },
+            { KSPActionGroup.Custom03, ("Back⏎ wheel", true) },
+            { KSPActionGroup.Custom04, ("Back⏎ wheel", true) },
+            { KSPActionGroup.Custom05, ("Back⏎ wheel", true) },
+            { KSPActionGroup.Custom06, ("Back⏎ wheel", true) },
+            { KSPActionGroup.Custom07, ("Back⏎ wheel", true) },
+            { KSPActionGroup.Custom08, ("Back⏎ wheel", true) },
         };
 
         private static void DrawToggleGlyphs()
@@ -186,11 +217,22 @@ namespace ControllerEverywhere
             foreach (var tb in _agToggles)
             {
                 if (tb == null || !tb.gameObject.activeInHierarchy) continue;
-                if (!_toggleLabels.TryGetValue(tb.group, out var label)) continue;
+                if (!_toggleLabels.TryGetValue(tb.group, out var entry)) continue;
                 var rt = tb.GetComponent<RectTransform>();
                 if (rt == null) continue;
-                DrawGlyphAt(rt, label, offset: new Vector2(0f, -26f));
+                DrawGlyphAt(rt, entry.label, offset: new Vector2(0f, -28f), big: entry.big);
             }
+        }
+
+        private static void DrawMapToggleGlyph()
+        {
+            if (_mapToggleBtn == null) return;
+            var rt = _mapToggleBtn.GetComponent<RectTransform>();
+            if (rt == null) return;
+            // Offset to the side so it doesn't cover the icon itself. The
+            // altimeter map toggle is near the top centre of the screen;
+            // placing the glyph above it reads well.
+            DrawGlyphAt(rt, "Y", offset: new Vector2(0f, -30f), big: true);
         }
 
         private static void DrawSasModeGlyphs()
@@ -208,28 +250,28 @@ namespace ControllerEverywhere
             }
         }
 
-        // DPad ←→ = SAS Prograde / Retrograde (primary). All other modes are
-        // reached via the Back-held modifier. Glyphs are drawn next to each
-        // SAS marker so the player can read them at a glance.
+        // SAS mode glyphs are tight — just arrows for the direct DPad bindings
+        // and LS+X compact chord labels for the rest (LS-held is the SAS mode
+        // modifier). Keeps the navball uncluttered.
         private static string SasGlyphFor(VesselAutopilot.AutopilotMode m)
         {
             switch (m)
             {
-                case VesselAutopilot.AutopilotMode.Prograde:        return "DPad ←";
-                case VesselAutopilot.AutopilotMode.Retrograde:      return "DPad →";
-                case VesselAutopilot.AutopilotMode.Normal:          return "Back+←";
-                case VesselAutopilot.AutopilotMode.Antinormal:      return "Back+→";
-                case VesselAutopilot.AutopilotMode.RadialIn:        return "Back+↑";
-                case VesselAutopilot.AutopilotMode.RadialOut:       return "Back+↓";
-                case VesselAutopilot.AutopilotMode.Target:          return "Back+LB";
-                case VesselAutopilot.AutopilotMode.AntiTarget:      return "Back+RB";
-                case VesselAutopilot.AutopilotMode.StabilityAssist: return "Back+A";
-                case VesselAutopilot.AutopilotMode.Maneuver:        return "Back+X";
+                case VesselAutopilot.AutopilotMode.Prograde:        return "←";
+                case VesselAutopilot.AutopilotMode.Retrograde:      return "→";
+                case VesselAutopilot.AutopilotMode.Normal:          return "LS+←";
+                case VesselAutopilot.AutopilotMode.Antinormal:      return "LS+→";
+                case VesselAutopilot.AutopilotMode.RadialIn:        return "LS+↑";
+                case VesselAutopilot.AutopilotMode.RadialOut:       return "LS+↓";
+                case VesselAutopilot.AutopilotMode.Target:          return "LS+LB";
+                case VesselAutopilot.AutopilotMode.AntiTarget:      return "LS+RB";
+                case VesselAutopilot.AutopilotMode.StabilityAssist: return "LS+A";
+                case VesselAutopilot.AutopilotMode.Maneuver:        return "LS+X";
                 default: return null;
             }
         }
 
-        private static void DrawGlyphAt(RectTransform rt, string text, Vector2 offset)
+        private static void DrawGlyphAt(RectTransform rt, string text, Vector2 offset, bool big = false)
         {
             var canvas = rt.GetComponentInParent<Canvas>();
             Camera cam = canvas != null ? canvas.worldCamera : null;
@@ -238,13 +280,14 @@ namespace ControllerEverywhere
             float x = screenPos.x + offset.x;
             float y = (Screen.height - screenPos.y) + offset.y;
 
-            const float W = 64f, H = 18f;
+            float W = big ? 92f : 52f;
+            float H = big ? 26f : 16f;
             var r = new Rect(x - W * 0.5f, y - H * 0.5f, W, H);
             var prev = GUI.color;
-            GUI.color = new Color(0.1f, 0.1f, 0.12f, 0.78f);
+            GUI.color = new Color(0.1f, 0.1f, 0.12f, 0.82f);
             GUI.DrawTexture(r, Texture2D.whiteTexture);
             GUI.color = new Color(0.8f, 1f, 0.8f, 1f);
-            GUI.Label(r, text, _glyphStyle);
+            GUI.Label(r, text, big ? _glyphStyleBig : _glyphStyleSmall);
             GUI.color = prev;
         }
     }
