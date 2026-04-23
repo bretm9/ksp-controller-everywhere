@@ -5,53 +5,41 @@ using UnityEngine.UI;
 
 namespace ControllerEverywhere
 {
-    // On-screen help for controller users:
-    //   - Always-visible mode badge (top-left corner) so you know what layer
-    //     you're in.
-    //   - Always-visible compact key strip (bottom-center) listing the key
-    //     bindings for the current mode.
-    //   - Contextual cheat sheet panel when a modifier is held (SAS / META /
-    //     MAP / PAW).
-    //   - Glyphs overlaid on KSP's SAS/RCS/Gear toggles and the navball SAS
-    //     mode markers.
+    // On-screen help overlays tuned for a console-style layout:
+    //   - Mode badge top-left (FLIGHT / MAP / BACK MOD / PAW / AG WHEEL / WHEEL)
+    //   - Compact key strip bottom-center listing every binding for the mode
+    //   - Per-button glyphs on KSP's SAS/RCS/Gear toggles and the navball SAS markers
+    //   - Highlight box on the focused PAW control (drawn by PAWNavigator)
     internal static class HudHints
     {
-        public enum Mode { Flight, Map, Sas, Meta, Paw, Radial }
+        public enum Mode { Flight, Map, BackMod, BackModMap, Paw, Radial, AgWheel }
 
         private static List<ActionGroupToggleButton> _agToggles = new List<ActionGroupToggleButton>();
         private static VesselAutopilotUI _sasUi;
         private static float _refreshTimer;
 
         private static GUIStyle _glyphStyle;
-        private static GUIStyle _sheetKeyStyle;
-        private static GUIStyle _sheetValStyle;
         private static GUIStyle _badgeStyle;
         private static GUIStyle _stripStyle;
 
-        public static void Draw(bool inSas, bool inMeta, bool inMap, bool inPaw, bool radialOpen = false)
+        public static void Draw(bool inBackMod, bool inMap, bool inPaw, bool agOpen, bool radialOpen)
         {
             EnsureStyles();
             RefreshRefs();
 
-            // Decide current mode (precedence: Radial > Sas > Meta > Paw > Map > Flight)
-            Mode mode = Mode.Flight;
+            Mode mode;
             if      (radialOpen) mode = Mode.Radial;
-            else if (inSas)      mode = Mode.Sas;
-            else if (inMeta)     mode = Mode.Meta;
+            else if (agOpen)     mode = Mode.AgWheel;
+            else if (inBackMod && inMap) mode = Mode.BackModMap;
+            else if (inBackMod)  mode = Mode.BackMod;
             else if (inPaw)      mode = Mode.Paw;
             else if (inMap)      mode = Mode.Map;
+            else                 mode = Mode.Flight;
 
             DrawModeBadge(mode);
             DrawKeyStrip(mode);
-
             DrawToggleGlyphs();
-            if (inSas) DrawSasModeGlyphs();
-
-            // Full cheat sheet (right side) only while a modifier is held or a
-            // menu mode is open — keeps the main flight view clean.
-            if      (inSas)  DrawCheatSheet("SAS MODES (hold Back)",     _sasSheet,  anchorRight: true);
-            else if (inMeta) DrawCheatSheet("META (long-hold Back)",     _metaSheet, anchorRight: true);
-            else if (inPaw)  DrawCheatSheet("PAW NAV",                   _pawSheet,  anchorRight: true);
+            if (inBackMod) DrawSasModeGlyphs();
         }
 
         private static void EnsureStyles()
@@ -59,18 +47,7 @@ namespace ControllerEverywhere
             if (_glyphStyle == null)
             {
                 _glyphStyle = new GUIStyle(GUI.skin.label)
-                {
-                    alignment = TextAnchor.MiddleCenter,
-                    fontSize = 12,
-                    fontStyle = FontStyle.Bold
-                };
-            }
-            if (_sheetKeyStyle == null)
-            {
-                _sheetKeyStyle = new GUIStyle(GUI.skin.label)
-                { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
-                _sheetValStyle = new GUIStyle(GUI.skin.label)
-                { fontSize = 12, alignment = TextAnchor.MiddleLeft };
+                { alignment = TextAnchor.MiddleCenter, fontSize = 12, fontStyle = FontStyle.Bold };
             }
             if (_badgeStyle == null)
             {
@@ -80,7 +57,7 @@ namespace ControllerEverywhere
             if (_stripStyle == null)
             {
                 _stripStyle = new GUIStyle(GUI.skin.label)
-                { fontSize = 12, alignment = TextAnchor.MiddleCenter, richText = true };
+                { fontSize = 12, alignment = TextAnchor.MiddleCenter, richText = true, wordWrap = true };
             }
         }
 
@@ -101,16 +78,17 @@ namespace ControllerEverywhere
             Color color;
             switch (mode)
             {
-                case Mode.Flight: text = "FLIGHT";        color = new Color(0.6f, 0.85f, 1f, 1f); break;
-                case Mode.Map:    text = "MAP / PLANNING"; color = new Color(1f, 0.85f, 0.4f, 1f); break;
-                case Mode.Sas:    text = "SAS PICKER";    color = new Color(0.5f, 1f, 0.6f, 1f);  break;
-                case Mode.Meta:   text = "META";          color = new Color(1f, 0.6f, 1f, 1f);    break;
-                case Mode.Paw:    text = "PART MENU";     color = new Color(0.5f, 1f, 0.6f, 1f);  break;
-                case Mode.Radial: text = "ACTION WHEEL";  color = new Color(1f, 0.8f, 0.4f, 1f);  break;
-                default:          text = "FLIGHT";        color = Color.white;                     break;
+                case Mode.Flight:     text = "FLIGHT";            color = new Color(0.6f, 0.85f, 1f, 1f); break;
+                case Mode.Map:        text = "MAP / PLANNING";    color = new Color(1f, 0.85f, 0.4f, 1f); break;
+                case Mode.BackMod:    text = "BACK HOLD";         color = new Color(0.5f, 1f, 0.6f, 1f);  break;
+                case Mode.BackModMap: text = "BACK HOLD (MAP)";   color = new Color(1f, 1f, 0.5f, 1f);    break;
+                case Mode.Paw:        text = "PART MENU";         color = new Color(0.5f, 1f, 0.6f, 1f);  break;
+                case Mode.Radial:     text = "ACTION WHEEL";      color = new Color(1f, 0.8f, 0.4f, 1f);  break;
+                case Mode.AgWheel:    text = "ACTION GROUPS";     color = new Color(0.9f, 0.7f, 1f, 1f);  break;
+                default:              text = "FLIGHT";            color = Color.white;                     break;
             }
 
-            const float W = 150f, H = 22f;
+            const float W = 180f, H = 22f;
             float x = 12f, y = 12f;
             UiDraw.Fill(new Rect(x, y, W, H), new Color(0f, 0f, 0f, 0.6f));
             UiDraw.Outline(new Rect(x, y, W, H), color, 1f);
@@ -121,60 +99,66 @@ namespace ControllerEverywhere
         }
 
         // ---- Compact key strip (bottom of screen) ------------------------------
+        // Console-style hint strip — lists every primary binding for the mode.
+        // Rich-text <b>…</b> bolds the button label so it scans quickly.
         private static readonly Dictionary<Mode, string> _strip = new Dictionary<Mode, string>
         {
             { Mode.Flight,
-              "<b>A</b> stage  <b>B</b> gear  <b>X</b> SAS  <b>Y</b> RCS  " +
-              "<b>LB/RB</b> roll  <b>LT/RT</b> thr  " +
-              "<b>L-stk</b> pitch/yaw  <b>R-stk</b> cam  " +
-              "<b>DPad ←→</b> warp  <b>DPad ↑</b> cam mode  <b>DPad ↓</b> recenter  " +
-              "<b>RS tap</b> map  <b>RS hold</b> wheel  <b>LS hold + LT/RT</b> zoom  " +
-              "<b>Back</b> SAS modes (long→META)" },
+              "<b>A</b> stage  <b>B</b> cancel  <b>X</b> part menu  <b>Y</b> map  " +
+              "<b>L-stick</b> pitch/yaw  <b>R-stick</b> camera  " +
+              "<b>LT/RT</b> throttle  <b>LB/RB</b> roll  " +
+              "<b>DPad</b> SAS (Pro/Retro/Nrm/Anti)  " +
+              "<b>LS</b> SAS on/off  <b>RS</b> RCS on/off  <b>RS hold</b> wheel  " +
+              "<b>Back tap</b> Action Groups  <b>Back hold</b> modifier  <b>Start</b> pause" },
             { Mode.Map,
-              "<b>A</b> +node  <b>B</b> −node  <b>LB/RB</b> prev/next node  <b>X</b> SAS  <b>Y</b> RCS  " +
-              "<b>DPad ↑↓</b> pro/retro dV  <b>DPad ←→</b> warp  " +
-              "<b>Y + DPad ↑↓</b> nrm/anti dV  <b>Y + LT/RT</b> radial dV  " +
-              "<b>LS hold + DPad ←→</b> UT  <b>RS tap</b> exit map" },
-            { Mode.Sas,
-              "<b>DPad ↑↓</b> Pro/Retro  <b>DPad ←→</b> Normal/Antinormal  " +
-              "<b>A/B</b> Target/AntiTarget  <b>X/Y</b> Radial in/out  " +
-              "<b>LB/RB</b> StabAssist/Maneuver" },
-            { Mode.Meta,
-              "<b>A B X Y</b> AG 1-4  <b>LB RB</b> AG 5-6  <b>DPad ↑↓←→</b> AG 7-10  " +
-              "<b>Start</b> Quick Load  <b>LS/RS</b> Switch Vessel" },
+              "<b>A</b> +node  <b>B</b> −node  <b>X</b> part menu  <b>Y</b> exit map  " +
+              "<b>LB/RB</b> cycle nodes  <b>LT/RT</b> throttle  <b>DPad</b> SAS  " +
+              "<b>LS</b> SAS  <b>RS</b> RCS  <b>Back hold</b> → fine-tune maneuver" },
+            { Mode.BackMod,
+              "<b>A</b> Stability  <b>B</b> Abort  <b>X</b> Maneuver  <b>Y</b> toggle IVA  " +
+              "<b>DPad ↑↓</b> Radial in/out  <b>DPad ←→</b> time warp  " +
+              "<b>LB/RB</b> Target/Anti-Target  <b>LT/RT</b> quick load/save  " +
+              "<b>LS</b> precision  <b>RS</b> camera mode" },
+            { Mode.BackModMap,
+              "<b>DPad ↑↓</b> pro/retro dV  <b>DPad ←→</b> normal/anti dV  " +
+              "<b>LT/RT</b> radial in/out dV  <b>LB/RB</b> UT earlier/later  " +
+              "<b>Y</b> exit map" },
             { Mode.Paw,
-              "<b>DPad</b> navigate  <b>A</b> click  <b>B</b> close  <b>LT/RT</b> slider  <b>LB+RB</b> re-aim" },
+              "<b>DPad</b> navigate (green box = focus)  <b>A</b> click  " +
+              "<b>B</b> close  <b>LT/RT</b> adjust slider" },
             { Mode.Radial,
-              "<b>Right stick</b> select  <b>release RS</b> or <b>A</b> confirm  <b>B</b> cancel" },
+              "<b>Right stick</b> select slice  <b>release RS</b> or <b>A</b> confirm  <b>B</b> cancel" },
+            { Mode.AgWheel,
+              "<b>Right stick</b> select AG 1-8  <b>A</b> fire  <b>B</b> cancel" },
         };
 
         private static void DrawKeyStrip(Mode mode)
         {
             if (!_strip.TryGetValue(mode, out var text)) return;
-            const float H = 22f;
-            float W = Mathf.Min(Screen.width - 24f, 1100f);
+            // Two-line strip so the content doesn't clip on narrow windows.
+            float W = Mathf.Min(Screen.width - 24f, 1180f);
+            const float H = 40f;
             float x = (Screen.width - W) * 0.5f;
             float y = Screen.height - H - 8f;
-            UiDraw.Fill(new Rect(x, y, W, H), new Color(0f, 0f, 0f, 0.55f));
-            GUI.Label(new Rect(x, y, W, H), text, _stripStyle);
+            UiDraw.Fill(new Rect(x, y, W, H), new Color(0f, 0f, 0f, 0.6f));
+            GUI.Label(new Rect(x + 10f, y + 3f, W - 20f, H - 6f), text, _stripStyle);
         }
 
         // ---- Per-button glyphs on flight toggles -------------------------------
         private static readonly Dictionary<KSPActionGroup, string> _toggleLabels = new Dictionary<KSPActionGroup, string>
         {
-            { KSPActionGroup.SAS,  "X"  },
-            { KSPActionGroup.RCS,  "Y"  },
-            { KSPActionGroup.Gear, "B"  },
-            { KSPActionGroup.Custom01, "Back⏎+A"  },
-            { KSPActionGroup.Custom02, "Back⏎+B"  },
-            { KSPActionGroup.Custom03, "Back⏎+X"  },
-            { KSPActionGroup.Custom04, "Back⏎+Y"  },
-            { KSPActionGroup.Custom05, "Back⏎+LB" },
-            { KSPActionGroup.Custom06, "Back⏎+RB" },
-            { KSPActionGroup.Custom07, "Back⏎+↑"  },
-            { KSPActionGroup.Custom08, "Back⏎+↓"  },
-            { KSPActionGroup.Custom09, "Back⏎+←"  },
-            { KSPActionGroup.Custom10, "Back⏎+→"  },
+            { KSPActionGroup.SAS,  "LS"  },
+            { KSPActionGroup.RCS,  "RS"  },
+            // Gear no longer has a direct binding (it was on B; B is now cancel).
+            // Custom AGs reachable via Back-tap wheel:
+            { KSPActionGroup.Custom01, "Back⏎" },
+            { KSPActionGroup.Custom02, "Back⏎" },
+            { KSPActionGroup.Custom03, "Back⏎" },
+            { KSPActionGroup.Custom04, "Back⏎" },
+            { KSPActionGroup.Custom05, "Back⏎" },
+            { KSPActionGroup.Custom06, "Back⏎" },
+            { KSPActionGroup.Custom07, "Back⏎" },
+            { KSPActionGroup.Custom08, "Back⏎" },
         };
 
         private static void DrawToggleGlyphs()
@@ -204,20 +188,23 @@ namespace ControllerEverywhere
             }
         }
 
+        // In console layout the Back-modifier picks the extended SAS modes.
+        // Primary modes (Pro/Retro/Normal/Antinormal) are plain DPad — show them
+        // during Back-hold since that's when all ten markers are relevant.
         private static string SasGlyphFor(VesselAutopilot.AutopilotMode m)
         {
             switch (m)
             {
-                case VesselAutopilot.AutopilotMode.StabilityAssist: return "LB";
-                case VesselAutopilot.AutopilotMode.Prograde:        return "↑";
-                case VesselAutopilot.AutopilotMode.Retrograde:      return "↓";
-                case VesselAutopilot.AutopilotMode.Normal:          return "←";
-                case VesselAutopilot.AutopilotMode.Antinormal:      return "→";
-                case VesselAutopilot.AutopilotMode.RadialIn:        return "X";
-                case VesselAutopilot.AutopilotMode.RadialOut:       return "Y";
-                case VesselAutopilot.AutopilotMode.Target:          return "A";
-                case VesselAutopilot.AutopilotMode.AntiTarget:      return "B";
-                case VesselAutopilot.AutopilotMode.Maneuver:        return "RB";
+                case VesselAutopilot.AutopilotMode.StabilityAssist: return "Back+A";
+                case VesselAutopilot.AutopilotMode.Prograde:        return "DPad ↑";
+                case VesselAutopilot.AutopilotMode.Retrograde:      return "DPad ↓";
+                case VesselAutopilot.AutopilotMode.Normal:          return "DPad ←";
+                case VesselAutopilot.AutopilotMode.Antinormal:      return "DPad →";
+                case VesselAutopilot.AutopilotMode.RadialIn:        return "Back+↑";
+                case VesselAutopilot.AutopilotMode.RadialOut:       return "Back+↓";
+                case VesselAutopilot.AutopilotMode.Target:          return "Back+LB";
+                case VesselAutopilot.AutopilotMode.AntiTarget:      return "Back+RB";
+                case VesselAutopilot.AutopilotMode.Maneuver:        return "Back+X";
                 default: return null;
             }
         }
@@ -231,64 +218,13 @@ namespace ControllerEverywhere
             float x = screenPos.x + offset.x;
             float y = (Screen.height - screenPos.y) + offset.y;
 
-            const float W = 52f, H = 18f;
+            const float W = 64f, H = 18f;
             var r = new Rect(x - W * 0.5f, y - H * 0.5f, W, H);
             var prev = GUI.color;
             GUI.color = new Color(0.1f, 0.1f, 0.12f, 0.78f);
             GUI.DrawTexture(r, Texture2D.whiteTexture);
             GUI.color = new Color(0.8f, 1f, 0.8f, 1f);
             GUI.Label(r, text, _glyphStyle);
-            GUI.color = prev;
-        }
-
-        // ---- Cheat sheet panels ------------------------------------------------
-        private static readonly (string key, string val)[] _sasSheet = new[]
-        {
-            ("DPad ↑ / ↓", "Prograde / Retrograde"),
-            ("DPad ← / →", "Normal / Antinormal"),
-            ("A / B",      "Target / Anti-Target"),
-            ("X / Y",      "Radial In / Radial Out"),
-            ("LB / RB",    "Stability Assist / Maneuver"),
-        };
-
-        private static readonly (string key, string val)[] _metaSheet = new[]
-        {
-            ("A B X Y",    "Action Groups 1-4"),
-            ("LB RB",      "Action Groups 5-6"),
-            ("DPad ↑↓←→",  "Action Groups 7-10"),
-            ("Start",      "Quick load"),
-            ("LS / RS",    "Switch vessel prev/next"),
-        };
-
-        private static readonly (string key, string val)[] _pawSheet = new[]
-        {
-            ("DPad",       "Navigate (green box = focus)"),
-            ("A",          "Click / toggle"),
-            ("B",          "Close PAW"),
-            ("LT / RT",    "Adjust slider"),
-            ("LB + RB",    "Re-aim at reticle"),
-        };
-
-        private static void DrawCheatSheet(string title, (string key, string val)[] rows, bool anchorRight)
-        {
-            const float W = 300f;
-            float rowH = 18f;
-            float H = 28f + rows.Length * rowH;
-            float x = anchorRight ? Screen.width - W - 12f : 12f;
-            float y = Screen.height - H - 40f;
-
-            var prev = GUI.color;
-            GUI.color = new Color(0f, 0f, 0f, 0.7f);
-            GUI.DrawTexture(new Rect(x, y, W, H), Texture2D.whiteTexture);
-            GUI.color = Color.white;
-            GUI.Label(new Rect(x + 8f, y + 4f, W - 16f, 20f), title,
-                      new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
-            for (int i = 0; i < rows.Length; i++)
-            {
-                float ry = y + 28f + i * rowH;
-                GUI.Label(new Rect(x + 8f,        ry, 130f,       rowH), rows[i].key, _sheetKeyStyle);
-                GUI.Label(new Rect(x + 8f + 130f, ry, W - 16f - 130f, rowH), rows[i].val, _sheetValStyle);
-            }
             GUI.color = prev;
         }
     }

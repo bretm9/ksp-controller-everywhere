@@ -4,10 +4,16 @@ using UnityEngine;
 
 namespace ControllerEverywhere
 {
-    // Screen-center radial menu. Held open with RS click (long press); the right
-    // stick direction picks a slice; releasing RS confirms. A = confirm, B = cancel.
+    // Screen-center radial menu. Two trigger modes:
+    //   RsHold        — holding RS opens the wheel; releasing RS confirms
+    //                   the hovered slice; a short tap fires ConsumePendingMapToggle.
+    //   LatchedAfterHold — opened via OpenLatched(); stays open until the user
+    //                   confirms (A) or cancels (B).
     internal class RadialMenu
     {
+        public enum TriggerMode { RsHold, LatchedAfterHold }
+        public TriggerMode Trigger = TriggerMode.RsHold;
+
         public struct Slice
         {
             public string Label;
@@ -15,7 +21,7 @@ namespace ControllerEverywhere
             public Slice(string label, Action action) { Label = label; Action = action; }
         }
 
-        private const float OpenHoldTime = 0.25f;   // seconds of RS hold before opening
+        private const float OpenHoldTime = 0.25f;
         private const float SelectThreshold = 0.35f;
 
         public bool IsOpen { get; private set; }
@@ -24,53 +30,72 @@ namespace ControllerEverywhere
 
         private float _rsHeldTime;
         private bool _rsWasDown;
-        private bool _pendingMapToggle;   // set when RS tap (quick release) — consumed by addon
+        private bool _pendingMapToggle;
         public bool ConsumePendingMapToggle() { bool b = _pendingMapToggle; _pendingMapToggle = false; return b; }
 
         public void SetSlices(List<Slice> s) => Slices = s ?? new List<Slice>();
 
-        // Returns true if the radial menu is "active" this frame and the addon
-        // should suppress its normal RS / right-stick behaviour.
+        public void OpenLatched()
+        {
+            if (Trigger != TriggerMode.LatchedAfterHold) return;
+            IsOpen = true;
+            Hovered = -1;
+        }
+
+        // Returns true if the menu is active this frame.
         public bool Update(ControllerInput.Pad p)
         {
-            // Track RS press/hold
+            switch (Trigger)
+            {
+                case TriggerMode.RsHold:        return UpdateRsHold(p);
+                case TriggerMode.LatchedAfterHold: return UpdateLatched(p);
+                default: return false;
+            }
+        }
+
+        private bool UpdateRsHold(ControllerInput.Pad p)
+        {
             if (p.RS && !_rsWasDown) { _rsHeldTime = 0f; }
             if (p.RS) _rsHeldTime += Time.unscaledDeltaTime;
 
-            // Open when held past threshold
-            if (p.RS && !IsOpen && _rsHeldTime >= OpenHoldTime)
-                IsOpen = true;
+            if (p.RS && !IsOpen && _rsHeldTime >= OpenHoldTime) IsOpen = true;
 
             if (IsOpen)
             {
-                // Selection tracks the right stick direction
-                var dir = p.RightStick;
-                if (dir.magnitude < SelectThreshold) Hovered = -1;
-                else
-                {
-                    float angDeg = Mathf.Atan2(dir.x, dir.y) * Mathf.Rad2Deg;
-                    if (angDeg < 0f) angDeg += 360f;
-                    float step = 360f / Mathf.Max(1, Slices.Count);
-                    int idx = Mathf.FloorToInt((angDeg + step * 0.5f) / step) % Slices.Count;
-                    Hovered = idx;
-                }
-
-                // Confirm: A press or RS release
-                if (ControllerInput.Pressed(s => s.A)) { Commit(); }
-                else if (!p.RS && _rsWasDown)         { Commit(); }
-
-                // Cancel: B press
-                if (ControllerInput.Pressed(s => s.B)) { Cancel(); }
+                UpdateHover(p.RightStick);
+                if (ControllerInput.Pressed(s => s.A)) Commit();
+                else if (!p.RS && _rsWasDown)         Commit();
+                if (ControllerInput.Pressed(s => s.B)) Cancel();
             }
             else if (!p.RS && _rsWasDown)
             {
-                // RS tap (pressed then released without menu opening) — fire a map-toggle
                 if (_rsHeldTime < OpenHoldTime) _pendingMapToggle = true;
                 _rsHeldTime = 0f;
             }
 
             _rsWasDown = p.RS;
             return IsOpen;
+        }
+
+        private bool UpdateLatched(ControllerInput.Pad p)
+        {
+            if (!IsOpen) return false;
+            UpdateHover(p.RightStick);
+            if (ControllerInput.Pressed(s => s.A)) Commit();
+            if (ControllerInput.Pressed(s => s.B)) Cancel();
+            return IsOpen;
+        }
+
+        private void UpdateHover(Vector2 dir)
+        {
+            if (dir.magnitude < SelectThreshold) Hovered = -1;
+            else
+            {
+                float angDeg = Mathf.Atan2(dir.x, dir.y) * Mathf.Rad2Deg;
+                if (angDeg < 0f) angDeg += 360f;
+                float step = 360f / Mathf.Max(1, Slices.Count);
+                Hovered = Mathf.FloorToInt((angDeg + step * 0.5f) / step) % Slices.Count;
+            }
         }
 
         private void Commit()
@@ -89,10 +114,6 @@ namespace ControllerEverywhere
             Hovered = -1;
         }
 
-        // ---- Rendering ----------------------------------------------------------
-        // Draws on OnGUI (IMGUI). Keeps the look deliberately minimal — rings of
-        // text labels. KSP's uGUI canvas is more polished but adds surface area
-        // we don't want.
         public void OnGUI()
         {
             if (!IsOpen || Slices.Count == 0) return;
@@ -101,14 +122,12 @@ namespace ControllerEverywhere
             float cy = Screen.height * 0.5f;
             float radius = Mathf.Min(Screen.width, Screen.height) * 0.22f;
 
-            // Dim backdrop
             var prev = GUI.color;
             GUI.color = new Color(0f, 0f, 0f, 0.45f);
             GUI.DrawTexture(new Rect(cx - radius - 40f, cy - radius - 40f,
                                      (radius + 40f) * 2f, (radius + 40f) * 2f),
                             Texture2D.whiteTexture);
 
-            // Center label
             GUI.color = new Color(1f, 1f, 1f, 0.9f);
             var centerStyle = new GUIStyle(GUI.skin.label)
             {
@@ -118,7 +137,6 @@ namespace ControllerEverywhere
             GUI.Label(new Rect(cx - 80f, cy - 10f, 160f, 20f),
                       Hovered >= 0 ? Slices[Hovered].Label : "— select —", centerStyle);
 
-            // Slice labels around the ring
             var labelStyle = new GUIStyle(GUI.skin.label)
             {
                 alignment = TextAnchor.MiddleCenter,

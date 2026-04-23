@@ -1,35 +1,32 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace ControllerEverywhere
 {
-    // Flight-scene hub. Three modal layers:
-    //   1) Hold Back  = SAS mode picker (dpad/face/bumpers pick navball marker)
-    //   2) Hold Home  = meta modifier (AG 1-10, quick save/load, vessel switch)
-    //   3) Map open   = maneuver node editor (face buttons create/delete/radial,
-    //                    dpad nudges prograde/normal, bumpers cycle nodes,
-    //                    LS/RS nudge UT)
-    // Otherwise normal flight bindings.
+    // Console-inspired flight layout (KSP Enhanced Edition as reference):
+    //   Left stick  → pitch / yaw       Right stick → camera
+    //   LT / RT     → throttle          LB / RB     → roll
+    //   DPad ↑↓←→   → SAS Pro/Retro/Normal/Antinormal  (direct, no modifier)
+    //   A stage · B cancel · X PAW · Y map · LS SAS · RS RCS
+    //   Back tap    → AG radial         Back hold   → modifier
+    //   RS hold     → action wheel      LB+RB       → (reserved)
     [KSPAddon(KSPAddon.Startup.Flight, false)]
     public class FlightAddon : MonoBehaviour
     {
         private Vessel _hookedVessel;
-        private RadialMenu _radial = new RadialMenu();
+        private RadialMenu _actionRadial = new RadialMenu();
+        private RadialMenu _agRadial     = new RadialMenu();
 
-        // Back is dual-purpose: quick-hold = SAS mode picker, long-hold = meta modifier.
-        // Threshold in seconds; crossover flips mode and announces it once.
-        private const float MetaHoldThreshold = 0.4f;
+        // Back modifier: tap opens AG radial, longer hold + chord is the modifier.
+        private const float BackHoldThreshold = 0.2f;
         private float _backHeldTime;
-        private bool  _metaAnnounced;
+        private bool  _backConsumed;    // true once Back has been used as modifier this press
 
-        // LS is a tap-for-precision, hold-for-zoom-chord dual-role. Track which.
+        // LS tap-vs-hold for precision-vs-zoom-chord.
         private float _lsHeldTime;
         private bool  _lsUsedAsChord;
 
-        // Our authoritative throttle target. Trigger deltas accumulate into this
-        // so throttle stays where the user left it and isn't reset by KSP each
-        // frame. Synced from state.mainThrottle when outside input (e.g. Shift
-        // key) moves it, so keyboard + controller coexist.
-        private float _targetThrottle = 0f;
+        private float _targetThrottle;
         private bool  _throttleInitialized;
 
         void Awake()
@@ -42,18 +39,33 @@ namespace ControllerEverywhere
         {
             HookActiveVessel();
             GameEvents.onVesselChange.Add(OnVesselChange);
-            // 8-slice wheel; slice 0 is North and indices proceed clockwise.
-            _radial.SetSlices(new System.Collections.Generic.List<RadialMenu.Slice>
+
+            // Action wheel (RS-held) — aim-based utilities
+            _actionRadial.SetSlices(new List<RadialMenu.Slice>
             {
-                new RadialMenu.Slice("Set Target",     FlightActions.SetTargetAtReticle),      // N
-                new RadialMenu.Slice("Focus Cam",      FlightActions.FocusCameraOnReticle),    // NE
-                new RadialMenu.Slice("SAS Hold Dir",   FlightActions.ToggleSasHoldDirection),  // E
-                new RadialMenu.Slice("Toggle IVA",     FlightActions.ToggleIVA),               // SE
-                new RadialMenu.Slice("Clear Target",   FlightActions.ClearTarget),             // S
-                new RadialMenu.Slice("Warp to Node",   FlightActions.WarpToNextNode),          // SW
-                new RadialMenu.Slice("Switch Vessel",  FlightActions.SwitchToVesselAtReticle), // W
-                new RadialMenu.Slice("Quick Save",     FlightActions.QuickSave),               // NW
+                new RadialMenu.Slice("Set Target",    FlightActions.SetTargetAtReticle),      // N
+                new RadialMenu.Slice("Focus Cam",     FlightActions.FocusCameraOnReticle),    // NE
+                new RadialMenu.Slice("SAS Hold Dir",  FlightActions.ToggleSasHoldDirection),  // E
+                new RadialMenu.Slice("Toggle IVA",    FlightActions.ToggleIVA),               // SE
+                new RadialMenu.Slice("Clear Target",  FlightActions.ClearTarget),             // S
+                new RadialMenu.Slice("Warp to Node",  FlightActions.WarpToNextNode),          // SW
+                new RadialMenu.Slice("Switch Vessel", FlightActions.SwitchToVesselAtReticle), // W
+                new RadialMenu.Slice("Quick Save",    FlightActions.QuickSave),               // NW
             });
+
+            // Action groups wheel (Back-tap) — custom 1-8
+            _agRadial.SetSlices(new List<RadialMenu.Slice>
+            {
+                new RadialMenu.Slice("AG 1", () => FlightActions.ToggleAG(KSPActionGroup.Custom01)),
+                new RadialMenu.Slice("AG 2", () => FlightActions.ToggleAG(KSPActionGroup.Custom02)),
+                new RadialMenu.Slice("AG 3", () => FlightActions.ToggleAG(KSPActionGroup.Custom03)),
+                new RadialMenu.Slice("AG 4", () => FlightActions.ToggleAG(KSPActionGroup.Custom04)),
+                new RadialMenu.Slice("AG 5", () => FlightActions.ToggleAG(KSPActionGroup.Custom05)),
+                new RadialMenu.Slice("AG 6", () => FlightActions.ToggleAG(KSPActionGroup.Custom06)),
+                new RadialMenu.Slice("AG 7", () => FlightActions.ToggleAG(KSPActionGroup.Custom07)),
+                new RadialMenu.Slice("AG 8", () => FlightActions.ToggleAG(KSPActionGroup.Custom08)),
+            });
+            _agRadial.Trigger = RadialMenu.TriggerMode.LatchedAfterHold; // stays open until A/B
         }
 
         void OnDestroy()
@@ -62,9 +74,6 @@ namespace ControllerEverywhere
             UnhookVessel();
         }
 
-        // Per-vessel OnFlyByWire is the reliable callback (the static
-        // FlightInputHandler one doesn't always fire). We re-hook on vessel
-        // switch events so controls follow the active craft.
         private void HookActiveVessel()
         {
             var v = FlightGlobals.ActiveVessel;
@@ -98,210 +107,230 @@ namespace ControllerEverywhere
             ControllerInput.Poll();
             var p = ControllerInput.Current;
 
-            // Safety: re-hook in case vessel change fired before Start.
             if (_hookedVessel != FlightGlobals.ActiveVessel) HookActiveVessel();
 
-            // Debug overlay chord (LS + RS + Back held ~0.5s)
             DebugOverlay.Poll(p);
 
-            // Radial menu owns the right stick while open — run first so we can
-            // gate camera/RS handling below.
-            bool radialActive = _radial.Update(p);
+            // Radials. Action wheel on RS-held (same as before), AG wheel latched.
+            bool radialActive = _actionRadial.Update(p) | _agRadial.Update(p);
 
-            // Track LS tap vs hold (hold = zoom chord)
+            // Track LS tap/hold for zoom chord
             if (p.LS)
             {
                 _lsHeldTime += Time.unscaledDeltaTime;
                 if (Mathf.Abs(p.RightTrigger - p.LeftTrigger) > 0.05f) _lsUsedAsChord = true;
             }
 
-            // Right stick → camera always. Triggers → camera zoom *only when LS
-            // is held* (chord); otherwise they throttle via OnFlyByWire.
+            // Camera. Right stick + LS-chord zoom (unchanged).
             if (!radialActive)
             {
                 float zoom = p.LS ? (p.RightTrigger - p.LeftTrigger) : 0f;
                 CameraControl.Flight(p.RightStick, zoom, Time.unscaledDeltaTime);
             }
 
-            // Track Back-hold duration and announce the mode flip once.
+            // ---- Back press: tap-for-AG-wheel vs hold-for-modifier ----
             if (p.Back) _backHeldTime += Time.unscaledDeltaTime;
-            else { _backHeldTime = 0f; _metaAnnounced = false; }
-            bool inMeta = p.Back && _backHeldTime >= MetaHoldThreshold;
-            bool inSas  = p.Back && !inMeta;
-            if (inMeta && !_metaAnnounced)
-            {
-                ScreenMessages.PostScreenMessage("META", 1.0f, ScreenMessageStyle.UPPER_CENTER);
-                _metaAnnounced = true;
-            }
+            bool backModifier = p.Back && (_backHeldTime >= BackHoldThreshold || _backConsumed);
 
-            // Start = pause, except when it's being used as a meta modifier combo.
-            if (!inMeta && ControllerInput.Pressed(s => s.Start)) TogglePauseMenu();
-
-            // RS tap (short press + release, menu didn't open) → toggle map
-            if (_radial.ConsumePendingMapToggle()) ToggleMapView();
+            // RS tap (short press + release without menu) → toggle map (same as before)
+            if (_actionRadial.ConsumePendingMapToggle()) ToggleMapView();
 
             if (radialActive) return;
 
-            if (inSas)       DispatchSasMode(p);
-            else if (inMeta) DispatchMetaMode(p);
-            else if (PAWNavigator.AnyOpen) DispatchPAWMode(p);
-            else if (MapView.MapIsEnabled) DispatchMapMode(p);
-            else             DispatchNormalMode(p);
-        }
-
-        // ---- PAW open: uGUI dpad nav, B closes ----------------------------------
-        private void DispatchPAWMode(ControllerInput.Pad p)
-        {
-            // Edge-detect LB+RB chord for open/close toggle so user can close PAW
-            // with the same combo that opened it.
-            if (p.LB && p.RB && (!ControllerInput.Previous.LB || !ControllerInput.Previous.RB))
+            if (backModifier)
             {
-                FlightActions.ToggleReticlePAW();
-                return;
+                if (DispatchBackModifier(p)) _backConsumed = true;
+            }
+            else if (PAWNavigator.AnyOpen)
+            {
+                DispatchPAWMode(p);
+            }
+            else if (MapView.MapIsEnabled)
+            {
+                DispatchMapMode(p);
+            }
+            else
+            {
+                DispatchNormalMode(p);
             }
 
-            // Delegate dpad/A/B into the PAW via EventSystem.
-            PAWNavigator.Tick(p);
+            // On Back release, decide: tap → open AG radial; hold → nothing more
+            if (ControllerInput.Released(s => s.Back))
+            {
+                bool wasTap = _backHeldTime < BackHoldThreshold && !_backConsumed;
+                if (wasTap) _agRadial.OpenLatched();
+                _backHeldTime = 0f;
+                _backConsumed = false;
+            }
         }
 
         // ---- Normal flight ------------------------------------------------------
         private void DispatchNormalMode(ControllerInput.Pad p)
         {
-            // Stage only when Y isn't held — Y+A is the abort chord.
-            if (!p.Y && ControllerInput.Pressed(s => s.A)) Stage();
-            if (ControllerInput.Pressed(s => s.X)) Toggle(KSPActionGroup.SAS);
-            if (ControllerInput.Released(s => s.Y) && !p.A) Toggle(KSPActionGroup.RCS);
-            if (ControllerInput.Pressed(s => s.B)) Toggle(KSPActionGroup.Gear);
+            // Face buttons
+            if (ControllerInput.Pressed(s => s.A))    Stage();
+            if (ControllerInput.Pressed(s => s.X))    FlightActions.ToggleReticlePAW();
+            if (ControllerInput.Pressed(s => s.Y))    ToggleMapView();
+            // B: close any open dialog — PAW handled in its own dispatch, radial handled above.
+            // Currently a no-op in pure flight, reserved for "cancel".
 
-            HandleLSTapVsHold(p);
-            HandlePAWChord(p);
-
-            // DPad L/R = time warp; DPad U/D = camera mode.
-            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) FlightActions.WarpFaster();
-            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) FlightActions.WarpSlower();
-            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) FlightActions.CycleCameraMode();
-            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) FlightActions.ResetCameraTarget();
-
-            // Y held + A = abort (safety chord; stage is suppressed when Y held)
-            if (p.Y && ControllerInput.Pressed(s => s.A)) Toggle(KSPActionGroup.Abort);
-        }
-
-        // LS tap → precision. LS hold gets consumed by the trigger-zoom chord or
-        // (in map mode) a dpad UT nudge; either sets _lsUsedAsChord so tap doesn't fire.
-        private void HandleLSTapVsHold(ControllerInput.Pad p)
-        {
-            if (ControllerInput.Released(s => s.LS))
-            {
-                bool wasTap = _lsHeldTime < 0.25f && !_lsUsedAsChord && !(p.LB && p.RB);
-                if (wasTap && FlightInputHandler.fetch != null)
-                    FlightInputHandler.fetch.precisionMode = !FlightInputHandler.fetch.precisionMode;
-                _lsHeldTime = 0f;
-                _lsUsedAsChord = false;
-            }
-        }
-
-        private void HandlePAWChord(ControllerInput.Pad p)
-        {
-            if (p.LB && p.RB && (!ControllerInput.Previous.LB || !ControllerInput.Previous.RB))
-                FlightActions.ToggleReticlePAW();
-        }
-
-        // ---- Hold Back: SAS mode picker ----------------------------------------
-        private void DispatchSasMode(ControllerInput.Pad p)
-        {
+            // SAS modes directly on DPad (primary 4)
             if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Prograde);
             if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Retrograde);
             if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Normal);
             if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Antinormal);
-            if (ControllerInput.Pressed(s => s.A))  SetSas(VesselAutopilot.AutopilotMode.Target);
-            if (ControllerInput.Pressed(s => s.B))  SetSas(VesselAutopilot.AutopilotMode.AntiTarget);
-            if (ControllerInput.Pressed(s => s.X))  SetSas(VesselAutopilot.AutopilotMode.RadialIn);
-            if (ControllerInput.Pressed(s => s.Y))  SetSas(VesselAutopilot.AutopilotMode.RadialOut);
-            if (ControllerInput.Pressed(s => s.LB)) SetSas(VesselAutopilot.AutopilotMode.StabilityAssist);
-            if (ControllerInput.Pressed(s => s.RB)) SetSas(VesselAutopilot.AutopilotMode.Maneuver);
+
+            // Stick clicks toggle SAS / RCS
+            if (ControllerInput.Pressed(s => s.LS) && !_lsUsedAsChord) Toggle(KSPActionGroup.SAS);
+            if (ControllerInput.Pressed(s => s.RS)) Toggle(KSPActionGroup.RCS);
+
+            if (ControllerInput.Released(s => s.LS)) { _lsHeldTime = 0f; _lsUsedAsChord = false; }
+
+            if (ControllerInput.Pressed(s => s.Start)) TogglePauseMenu();
         }
 
-        // ---- Long-press Back: meta modifier ------------------------------------
-        private void DispatchMetaMode(ControllerInput.Pad p)
+        // ---- Back-held modifier -------------------------------------------------
+        // Returns true if anything was consumed this frame (locks Back into modifier mode).
+        private bool DispatchBackModifier(ControllerInput.Pad p)
         {
-            if (ControllerInput.Pressed(s => s.A))  FlightActions.ToggleAG(KSPActionGroup.Custom01);
-            if (ControllerInput.Pressed(s => s.B))  FlightActions.ToggleAG(KSPActionGroup.Custom02);
-            if (ControllerInput.Pressed(s => s.X))  FlightActions.ToggleAG(KSPActionGroup.Custom03);
-            if (ControllerInput.Pressed(s => s.Y))  FlightActions.ToggleAG(KSPActionGroup.Custom04);
-            if (ControllerInput.Pressed(s => s.LB)) FlightActions.ToggleAG(KSPActionGroup.Custom05);
-            if (ControllerInput.Pressed(s => s.RB)) FlightActions.ToggleAG(KSPActionGroup.Custom06);
-            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) FlightActions.ToggleAG(KSPActionGroup.Custom07);
-            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) FlightActions.ToggleAG(KSPActionGroup.Custom08);
-            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) FlightActions.ToggleAG(KSPActionGroup.Custom09);
-            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) FlightActions.ToggleAG(KSPActionGroup.Custom10);
+            bool consumed = false;
 
-            // Quick save is radial-only now (NW slice); Start = Quick load in meta.
-            if (ControllerInput.Pressed(s => s.Start)) FlightActions.QuickLoad();
-            if (ControllerInput.Pressed(s => s.LS))    FlightActions.SwitchVessel(-1);
-            if (ControllerInput.Pressed(s => s.RS))    FlightActions.SwitchVessel(+1);
+            if (MapView.MapIsEnabled)
+            {
+                // --- Map-specific overrides (maneuver fine-tune) ---
+                float dt = Time.fixedDeltaTime > 0 ? Time.fixedDeltaTime : Time.unscaledDeltaTime;
+                float rate = 1.5f;
+
+                // Back + DPad ↑↓ = prograde / retrograde dV nudge (continuous)
+                if (p.Dpad.y >  0.5f) { FlightActions.NudgeNode(0, 0, +rate * dt, 0); consumed = true; }
+                if (p.Dpad.y < -0.5f) { FlightActions.NudgeNode(0, 0, -rate * dt, 0); consumed = true; }
+                // Back + DPad ←→ = normal / antinormal dV
+                if (p.Dpad.x >  0.5f) { FlightActions.NudgeNode(0, +rate * dt, 0, 0); consumed = true; }
+                if (p.Dpad.x < -0.5f) { FlightActions.NudgeNode(0, -rate * dt, 0, 0); consumed = true; }
+                // Back + triggers = radial dV
+                float radialIn  = p.RightTrigger - p.LeftTrigger;
+                if (Mathf.Abs(radialIn) > 0.05f) { FlightActions.NudgeNode(radialIn * rate * dt, 0, 0, 0); consumed = true; }
+                // Back + bumpers = UT earlier/later
+                if (p.LB) { FlightActions.NudgeNode(0, 0, 0, -5f * dt); consumed = true; }
+                if (p.RB) { FlightActions.NudgeNode(0, 0, 0, +5f * dt); consumed = true; }
+
+                // Back + Y = exit map
+                if (ControllerInput.Pressed(s => s.Y)) { ToggleMapView(); consumed = true; }
+                return consumed;
+            }
+
+            // Non-map Back modifier
+
+            // Extended SAS modes
+            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) { SetSas(VesselAutopilot.AutopilotMode.RadialIn);   consumed = true; }
+            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) { SetSas(VesselAutopilot.AutopilotMode.RadialOut);  consumed = true; }
+            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) { FlightActions.WarpSlower(); consumed = true; }
+            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) { FlightActions.WarpFaster(); consumed = true; }
+
+            if (ControllerInput.Pressed(s => s.A)) { SetSas(VesselAutopilot.AutopilotMode.StabilityAssist); consumed = true; }
+            if (ControllerInput.Pressed(s => s.B)) { Toggle(KSPActionGroup.Abort); consumed = true; }
+            if (ControllerInput.Pressed(s => s.X)) { SetSas(VesselAutopilot.AutopilotMode.Maneuver); consumed = true; }
+            if (ControllerInput.Pressed(s => s.Y)) { FlightActions.ToggleIVA(); consumed = true; }
+            if (ControllerInput.Pressed(s => s.LB)) { SetSas(VesselAutopilot.AutopilotMode.Target); consumed = true; }
+            if (ControllerInput.Pressed(s => s.RB)) { SetSas(VesselAutopilot.AutopilotMode.AntiTarget); consumed = true; }
+
+            // Triggers = quick load (LT) / quick save (RT) on press edge — but triggers are analog.
+            // Use a threshold to detect "new pull" without holding.
+            if (p.LeftTrigger  > 0.6f && ControllerInput.Previous.LeftTrigger  <= 0.6f) { FlightActions.QuickLoad(); consumed = true; }
+            if (p.RightTrigger > 0.6f && ControllerInput.Previous.RightTrigger <= 0.6f) { FlightActions.QuickSave(); consumed = true; }
+
+            if (ControllerInput.Pressed(s => s.LS) && FlightInputHandler.fetch != null)
+            {
+                FlightInputHandler.fetch.precisionMode = !FlightInputHandler.fetch.precisionMode;
+                consumed = true;
+            }
+            if (ControllerInput.Pressed(s => s.RS)) { FlightActions.CycleCameraMode(); consumed = true; }
+
+            return consumed;
         }
 
-        // ---- Map view: additive on top of normal flight ------------------------
-        // Full flight stays live (throttle, pitch/yaw, camera). Bumpers repurpose
-        // to cycle nodes, face buttons to node create/delete + SAS/RCS (kept),
-        // dpad to prograde/retrograde + time warp. Normal/antinormal and radial
-        // nudges live under the Y modifier. UT nudge on LS-hold + DPad ←→.
+        // ---- Map view: additive on top of normal flight -----------------------
         private void DispatchMapMode(ControllerInput.Pad p)
         {
-            // Face buttons: A creates / Y-chord aborts; B deletes; X SAS; Y RCS.
-            if (!p.Y && ControllerInput.Pressed(s => s.A)) FlightActions.CreateManeuverNode();
-            if (ControllerInput.Pressed(s => s.B))         FlightActions.DeleteSelectedNode();
-            if (ControllerInput.Pressed(s => s.X))         Toggle(KSPActionGroup.SAS);
-            if (ControllerInput.Released(s => s.Y) && !p.A) Toggle(KSPActionGroup.RCS);
-            if (p.Y && ControllerInput.Pressed(s => s.A))  Toggle(KSPActionGroup.Abort);
+            // Face buttons — replace stage/gear with node create/delete since
+            // you rarely stage from the map screen.
+            if (ControllerInput.Pressed(s => s.A)) FlightActions.CreateManeuverNode();
+            if (ControllerInput.Pressed(s => s.B)) FlightActions.DeleteSelectedNode();
+            if (ControllerInput.Pressed(s => s.X)) FlightActions.ToggleReticlePAW();
+            if (ControllerInput.Pressed(s => s.Y)) ToggleMapView();
 
-            // Bumpers cycle maneuver nodes (replaces roll in map mode).
+            // Bumpers cycle maneuver nodes (replaces roll in map mode — roll here is rare).
             if (ControllerInput.Pressed(s => s.LB)) FlightActions.CycleNode(-1);
             if (ControllerInput.Pressed(s => s.RB)) FlightActions.CycleNode(+1);
 
-            HandleLSTapVsHold(p);
-            HandlePAWChord(p);
+            // DPad = SAS modes (same as normal) — useful while lining up a burn.
+            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Prograde);
+            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Retrograde);
+            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Normal);
+            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Antinormal);
 
-            // --- Time warp vs UT nudge on DPad ←→ ---
-            // Normal:       DPad ←→ = time warp
-            // LS-held chord: DPad ←→ = nudge UT earlier / later
-            float dt = Time.fixedDeltaTime > 0 ? Time.fixedDeltaTime : Time.unscaledDeltaTime;
-            if (p.LS)
-            {
-                float dUT = 0f;
-                if (p.Dpad.x < -0.5f) { dUT = -5f * dt; _lsUsedAsChord = true; }
-                if (p.Dpad.x >  0.5f) { dUT = +5f * dt; _lsUsedAsChord = true; }
-                if (dUT != 0f) FlightActions.NudgeNode(0, 0, 0, dUT);
-            }
-            else
-            {
-                if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) FlightActions.WarpFaster();
-                if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) FlightActions.WarpSlower();
-            }
+            // Stick clicks same as normal
+            if (ControllerInput.Pressed(s => s.LS) && !_lsUsedAsChord) Toggle(KSPActionGroup.SAS);
+            if (ControllerInput.Pressed(s => s.RS)) Toggle(KSPActionGroup.RCS);
+            if (ControllerInput.Released(s => s.LS)) { _lsHeldTime = 0f; _lsUsedAsChord = false; }
 
-            // --- dV nudges on DPad ↑↓ + triggers ---
-            // No Y:     DPad ↑↓ = prograde / retrograde
-            // Y held:   DPad ↑↓ = normal / antinormal,  LT/RT = radial-in / radial-out
-            float rate = 1.5f;          // m/s per second of hold
-            float dProg = 0f, dNorm = 0f, dRad = 0f;
-            float dy = p.Dpad.y > 0.5f ? 1f : p.Dpad.y < -0.5f ? -1f : 0f;
-            if (p.Y)
-            {
-                dNorm = dy * rate * dt;
-                dRad  = (p.RightTrigger - p.LeftTrigger) * rate * dt;
-            }
-            else
-            {
-                dProg = dy * rate * dt;
-            }
-            if (dProg != 0f || dNorm != 0f || dRad != 0f)
-                FlightActions.NudgeNode(dRad, dNorm, dProg, 0f);
+            if (ControllerInput.Pressed(s => s.Start)) TogglePauseMenu();
+
+            // Maneuver node fine-tune is reachable under Back modifier (see DispatchBackModifier).
         }
 
-        // ---- Reticle overlay + radial menu -------------------------------------
+        // ---- PAW open: dpad nav, B closes --------------------------------------
+        private void DispatchPAWMode(ControllerInput.Pad p)
+        {
+            // Flight axes still apply via OnFlyByWire. Here we only drive the PAW.
+            PAWNavigator.Tick(p);
+        }
+
+        // ---- OnFlyByWire (fly-axis driver) -------------------------------------
+        private void OnFlyByWire(FlightCtrlState s)
+        {
+            var p = ControllerInput.Current;
+
+            // Back modifier suppresses flight axis input so the player can menu
+            // without bleeding stick motion into the craft.
+            bool suppress = p.Back && (_backHeldTime >= BackHoldThreshold || _backConsumed);
+            if (suppress) return;
+
+            float precision = (FlightInputHandler.fetch != null && FlightInputHandler.fetch.precisionMode) ? 0.5f : 1f;
+            float pitchIn = -p.LeftStick.y;
+            float yawIn   =  p.LeftStick.x;
+            float rollIn  = (p.RB ? 1f : 0f) - (p.LB ? 1f : 0f);
+
+            s.pitch = Mathf.Clamp(s.pitch + pitchIn * precision, -1f, 1f);
+            s.yaw   = Mathf.Clamp(s.yaw   + yawIn   * precision, -1f, 1f);
+            s.roll  = Mathf.Clamp(s.roll  + rollIn  * precision, -1f, 1f);
+
+            if (!_throttleInitialized) { _targetThrottle = s.mainThrottle; _throttleInitialized = true; }
+
+            // Stock keyboard throttle bindings still work alongside the controller.
+            if (GameSettings.THROTTLE_FULL.GetKeyDown())  _targetThrottle = 1f;
+            if (GameSettings.THROTTLE_CUTOFF.GetKeyDown()) _targetThrottle = 0f;
+            if (GameSettings.THROTTLE_UP.GetKey())   _targetThrottle = Mathf.Clamp01(_targetThrottle + Time.fixedDeltaTime);
+            if (GameSettings.THROTTLE_DOWN.GetKey()) _targetThrottle = Mathf.Clamp01(_targetThrottle - Time.fixedDeltaTime);
+
+            // Triggers throttle unless LS-held (zoom chord).
+            if (!p.LS)
+            {
+                float dThr = (p.RightTrigger - p.LeftTrigger) * Time.fixedDeltaTime;
+                _targetThrottle = Mathf.Clamp01(_targetThrottle + dThr);
+                s.wheelThrottle = Mathf.Clamp(s.wheelThrottle + (p.RightTrigger - p.LeftTrigger), -1f, 1f);
+            }
+            s.mainThrottle = _targetThrottle;
+            if (FlightInputHandler.fetch != null)
+                Reflector.Set(FlightInputHandler.fetch, "axisThrottle", _targetThrottle);
+
+            s.wheelSteer = Mathf.Clamp(s.wheelSteer + yawIn, -1f, 1f);
+        }
+
+        // ---- OnGUI --------------------------------------------------------------
         void OnGUI()
         {
-            // Center crosshair for PAW aiming. Hidden in map view.
+            // Reticle only in flight (hidden in map and when overlays are open).
             if (!MapView.MapIsEnabled && CameraManager.Instance != null)
             {
                 var mode = CameraManager.Instance.currentCameraMode;
@@ -317,82 +346,22 @@ namespace ControllerEverywhere
                 }
             }
 
-            // Per-button glyphs + always-visible mode badge & key strip +
-            // contextual cheat sheet.
             HudHints.Draw(
-                inSas:      _backHeldTime > 0f && _backHeldTime <  MetaHoldThreshold,
-                inMeta:     _backHeldTime >= MetaHoldThreshold,
-                inMap:      MapView.MapIsEnabled,
-                inPaw:      PAWNavigator.AnyOpen,
-                radialOpen: _radial.IsOpen);
+                inBackMod: _backConsumed || (ControllerInput.Current.Back && _backHeldTime >= BackHoldThreshold),
+                inMap:     MapView.MapIsEnabled,
+                inPaw:     PAWNavigator.AnyOpen,
+                agOpen:    _agRadial.IsOpen,
+                radialOpen:_actionRadial.IsOpen);
 
-            // Highlight box around the currently-focused PAW selectable
             if (PAWNavigator.AnyOpen) PAWNavigator.DrawHighlight();
 
-            _radial.OnGUI();
+            _actionRadial.OnGUI();
+            _agRadial.OnGUI();
 
-            // Debug axis readout on top of everything
             DebugOverlay.Draw();
         }
 
-        // ---- OnFlyByWire (fly-axis driver) -------------------------------------
-        private void OnFlyByWire(FlightCtrlState s)
-        {
-            var p = ControllerInput.Current;
-
-            // Suppress flight axis input when a mode modifier is held.
-            if (p.Back) return;
-
-            float precision = (FlightInputHandler.fetch != null && FlightInputHandler.fetch.precisionMode) ? 0.5f : 1f;
-            float pitchIn = -p.LeftStick.y;
-            float yawIn   =  p.LeftStick.x;
-            float rollIn  = (p.RB ? 1f : 0f) - (p.LB ? 1f : 0f);
-
-            s.pitch = Mathf.Clamp(s.pitch + pitchIn * precision, -1f, 1f);
-            s.yaw   = Mathf.Clamp(s.yaw   + yawIn   * precision, -1f, 1f);
-            s.roll  = Mathf.Clamp(s.roll  + rollIn  * precision, -1f, 1f);
-
-            // On first call, take KSP's throttle as the starting target so we
-            // don't snap to 0 on entry into the flight scene.
-            if (!_throttleInitialized) { _targetThrottle = s.mainThrottle; _throttleInitialized = true; }
-
-            // Sync from keyboard / stock throttle keys. GameSettings exposes the
-            // "throttle up / down / zero / full" bindings, which are the only
-            // external sources that should move the target. We deliberately do
-            // NOT adopt state.mainThrottle itself — KSP re-zeros it every frame
-            // when the keyboard isn't pressed, which would reset our target.
-            if (GameSettings.THROTTLE_FULL.GetKeyDown())  _targetThrottle = 1f;
-            if (GameSettings.THROTTLE_CUTOFF.GetKeyDown()) _targetThrottle = 0f;
-            if (GameSettings.THROTTLE_UP.GetKey())   _targetThrottle = Mathf.Clamp01(_targetThrottle + Time.fixedDeltaTime);
-            if (GameSettings.THROTTLE_DOWN.GetKey()) _targetThrottle = Mathf.Clamp01(_targetThrottle - Time.fixedDeltaTime);
-
-            // Triggers drive throttle UNLESS LS is held (then they zoom camera).
-            // Full trigger = ~1.0/sec (0 → 100% in one second).
-            if (!p.LS)
-            {
-                float dThr = (p.RightTrigger - p.LeftTrigger) * Time.fixedDeltaTime;
-                _targetThrottle = Mathf.Clamp01(_targetThrottle + dThr);
-                s.wheelThrottle = Mathf.Clamp(s.wheelThrottle + (p.RightTrigger - p.LeftTrigger), -1f, 1f);
-            }
-
-            // Force our target into the state + persistence fields every frame so
-            // KSP's between-frame reset doesn't eat it.
-            s.mainThrottle = _targetThrottle;
-            if (FlightInputHandler.fetch != null)
-                Reflector.Set(FlightInputHandler.fetch, "axisThrottle", _targetThrottle);
-
-            s.wheelSteer = Mathf.Clamp(s.wheelSteer + yawIn, -1f, 1f);
-
-            if (p.Y && FlightGlobals.ActiveVessel != null && FlightGlobals.ActiveVessel.ActionGroups[KSPActionGroup.RCS])
-            {
-                s.X = Mathf.Clamp(s.X + p.LeftStick.x, -1f, 1f);
-                s.Y = Mathf.Clamp(s.Y + p.LeftStick.y, -1f, 1f);
-                s.Z = Mathf.Clamp(s.Z + rollIn,         -1f, 1f);
-                s.pitch = 0f; s.yaw = 0f; s.roll = 0f;
-            }
-        }
-
-        // ---- Primitive actions --------------------------------------------------
+        // ---- Primitives ---------------------------------------------------------
         private void Stage() => KSP.UI.Screens.StageManager.ActivateNextStage();
 
         private void Toggle(KSPActionGroup g)
