@@ -26,6 +26,13 @@ namespace ControllerEverywhere
         private float _lsHeldTime;
         private bool  _lsUsedAsChord;
 
+        // Our authoritative throttle target. Trigger deltas accumulate into this
+        // so throttle stays where the user left it and isn't reset by KSP each
+        // frame. Synced from state.mainThrottle when outside input (e.g. Shift
+        // key) moves it, so keyboard + controller coexist.
+        private float _targetThrottle = 0f;
+        private bool  _throttleInitialized;
+
         void Awake()
         {
             Bindings.Load();
@@ -312,18 +319,32 @@ namespace ControllerEverywhere
             s.yaw   = Mathf.Clamp(s.yaw   + yawIn   * precision, -1f, 1f);
             s.roll  = Mathf.Clamp(s.roll  + rollIn  * precision, -1f, 1f);
 
-            // Throttle: triggers drive it UNLESS LS is held (then they zoom camera).
+            // On first call, take KSP's throttle as the starting target so we
+            // don't snap to 0 on entry.
+            if (!_throttleInitialized) { _targetThrottle = s.mainThrottle; _throttleInitialized = true; }
+
+            // If the keyboard (Shift/Ctrl/Z/X) or another mod moved throttle
+            // since last frame, adopt that value so users can still mix inputs.
+            if (Mathf.Abs(s.mainThrottle - _targetThrottle) > 0.01f)
+                _targetThrottle = s.mainThrottle;
+
+            // Triggers drive throttle UNLESS LS is held (then they zoom camera).
+            // Rate: full trigger = ~1.0/sec (0 → 100% in one second). Use fixedDeltaTime
+            // because OnFlyByWire runs in the physics step; unscaledDeltaTime gives a
+            // render-frame delta here and produces tiny increments.
             if (!p.LS)
             {
-                float dThr = (p.RightTrigger - p.LeftTrigger) * Time.unscaledDeltaTime;
-                s.mainThrottle = Mathf.Clamp01(s.mainThrottle + dThr);
-                // axisThrottle is where KSP persists the throttle between frames.
-                // Non-public, so set via reflection.
-                if (FlightInputHandler.fetch != null)
-                    Reflector.Set(FlightInputHandler.fetch, "axisThrottle", s.mainThrottle);
-
+                float dt = Time.fixedDeltaTime;
+                float dThr = (p.RightTrigger - p.LeftTrigger) * dt;
+                _targetThrottle = Mathf.Clamp01(_targetThrottle + dThr);
                 s.wheelThrottle = Mathf.Clamp(s.wheelThrottle + (p.RightTrigger - p.LeftTrigger), -1f, 1f);
             }
+            // Always write target to state.mainThrottle + persist to axisThrottle so
+            // KSP keeps the throttle parked where the player left it.
+            s.mainThrottle = _targetThrottle;
+            if (FlightInputHandler.fetch != null)
+                Reflector.Set(FlightInputHandler.fetch, "axisThrottle", _targetThrottle);
+
             s.wheelSteer = Mathf.Clamp(s.wheelSteer + yawIn, -1f, 1f);
 
             if (p.Y && FlightGlobals.ActiveVessel != null && FlightGlobals.ActiveVessel.ActionGroups[KSPActionGroup.RCS])

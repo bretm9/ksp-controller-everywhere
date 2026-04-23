@@ -4,7 +4,7 @@
   "name": "ControllerEverywhere",
   "abstract": "Full controller support across every KSP scene (flight, KSC, editor, map, tracking, IVA). Right stick camera everywhere, SAS mode picker, maneuver node editor, radial action wheel, PAW navigation, action groups, and an on-screen cheat sheet.",
   "author": "bretm9",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "ksp_version_min": "1.12",
   "ksp_version_max": "1.12.5",
   "license": "unknown",
@@ -14,11 +14,11 @@
     "repository": "https://github.com/bretm9/ksp-controller-everywhere",
     "bugtracker": "https://github.com/bretm9/ksp-controller-everywhere/issues"
   },
-  "download": "https://github.com/bretm9/ksp-controller-everywhere/releases/download/v0.2.1/ControllerEverywhere-0.2.1.zip",
-  "download_size": 27811,
+  "download": "https://github.com/bretm9/ksp-controller-everywhere/releases/download/v0.2.2/ControllerEverywhere-0.2.2.zip",
+  "download_size": 27911,
   "download_hash": {
-    "sha1":   "57F3279F8D25BBFACD493AE5A4C41CC62AC1C04D",
-    "sha256": "901B90324A8F786D7A8A90540F8EA644B6DCD8B28C56C8945E595A14002C7CAF"
+    "sha1":   "31C6A46F13DB2749CCA363360F6630780E57AAC3",
+    "sha256": "B2AC7F06FDCB9C5DEAD1BE947FE55B495A66B7702A2C6051062380D7BE2E34C5"
   },
   "install": [
     {
