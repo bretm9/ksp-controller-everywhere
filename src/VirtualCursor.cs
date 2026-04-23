@@ -50,10 +50,10 @@ namespace ControllerEverywhere
                 _initialized = true;
             }
 
-            // Right stick moves cursor. Left stick also moves (faster) so users
-            // who still want to use right stick for e.g. navball orient can.
+            // Right stick only — having both sticks drive the cursor made it
+            // jittery in the main menu where the left stick also powers
+            // Selectable focus nav.
             Vector2 move = p.RightStick;
-            if (move.sqrMagnitude < 0.04f) move = p.LeftStick * 0.8f;
             _pos += move * Speed * Time.unscaledDeltaTime;
             _pos.x = Mathf.Clamp(_pos.x, 0f, Screen.width);
             _pos.y = Mathf.Clamp(_pos.y, 0f, Screen.height);

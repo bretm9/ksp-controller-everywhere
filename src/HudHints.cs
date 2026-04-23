@@ -42,7 +42,11 @@ namespace ControllerEverywhere
             DrawModeBadge(mode);
             DrawKeyStrip(mode);
             DrawToggleGlyphs();
-            if (inBackMod) DrawSasModeGlyphs();
+            // Always draw SAS mode glyphs — the DPad bindings are direct (no
+            // modifier) so the player should see them at all times, and the
+            // extended-mode chords (Back+A etc.) are helpful to see even when
+            // Back isn't held.
+            DrawSasModeGlyphs();
         }
 
         private static void EnsureStyles()

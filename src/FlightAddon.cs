@@ -118,7 +118,9 @@ namespace ControllerEverywhere
             // Radials. Action wheel on RS-held (same as before), AG wheel latched.
             bool radialActive = _actionRadial.Update(p) | _agRadial.Update(p);
 
-            // Track LS tap/hold for zoom chord
+            // Track LS tap/hold for zoom chord. Reset on each press edge so a
+            // long hold across modifier transitions doesn't poison the state.
+            if (ControllerInput.Pressed(s => s.LS)) { _lsHeldTime = 0f; _lsUsedAsChord = false; }
             if (p.LS)
             {
                 _lsHeldTime += Time.unscaledDeltaTime;
@@ -355,6 +357,17 @@ namespace ControllerEverywhere
             // without bleeding stick motion into the craft.
             bool suppress = p.Back && (_backHeldTime >= BackHoldThreshold || _backConsumed);
             if (suppress) return;
+
+            // EVA — DispatchEvaMode drives KerbalEVA.cmdDir directly for walking
+            // and jetpack translation. Overlaying pitch/yaw/roll from the stick
+            // on top of that was making the kerbal both strafe and tumble from
+            // the same input. Only keep roll on bumpers (useful for jetpack bank).
+            if (FlightGlobals.ActiveVessel != null && FlightGlobals.ActiveVessel.isEVA)
+            {
+                float rollEva = (p.RB ? 1f : 0f) - (p.LB ? 1f : 0f);
+                s.roll = Mathf.Clamp(s.roll + rollEva, -1f, 1f);
+                return;
+            }
 
             float precision = (FlightInputHandler.fetch != null && FlightInputHandler.fetch.precisionMode) ? 0.5f : 1f;
             float pitchIn = -p.LeftStick.y;
