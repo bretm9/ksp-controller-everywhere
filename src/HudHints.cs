@@ -12,7 +12,7 @@ namespace ControllerEverywhere
     //   - Highlight box on the focused PAW control (drawn by PAWNavigator)
     internal static class HudHints
     {
-        public enum Mode { Flight, Map, BackMod, BackModMap, Paw, Radial, AgWheel, Cursor }
+        public enum Mode { Flight, Map, BackMod, BackModMap, Paw, Radial, AgWheel, Cursor, Eva, BackModEva }
 
         private static List<ActionGroupToggleButton> _agToggles = new List<ActionGroupToggleButton>();
         private static VesselAutopilotUI _sasUi;
@@ -22,7 +22,7 @@ namespace ControllerEverywhere
         private static GUIStyle _badgeStyle;
         private static GUIStyle _stripStyle;
 
-        public static void Draw(bool inBackMod, bool inMap, bool inPaw, bool agOpen, bool radialOpen, bool cursor)
+        public static void Draw(bool inBackMod, bool inMap, bool inPaw, bool agOpen, bool radialOpen, bool cursor, bool inEva = false)
         {
             EnsureStyles();
             RefreshRefs();
@@ -31,9 +31,11 @@ namespace ControllerEverywhere
             if      (cursor)     mode = Mode.Cursor;
             else if (radialOpen) mode = Mode.Radial;
             else if (agOpen)     mode = Mode.AgWheel;
+            else if (inBackMod && inEva) mode = Mode.BackModEva;
             else if (inBackMod && inMap) mode = Mode.BackModMap;
             else if (inBackMod)  mode = Mode.BackMod;
             else if (inPaw)      mode = Mode.Paw;
+            else if (inEva)      mode = Mode.Eva;
             else if (inMap)      mode = Mode.Map;
             else                 mode = Mode.Flight;
 
@@ -87,6 +89,8 @@ namespace ControllerEverywhere
                 case Mode.Radial:     text = "ACTION WHEEL";      color = new Color(1f, 0.8f, 0.4f, 1f);  break;
                 case Mode.AgWheel:    text = "ACTION GROUPS";     color = new Color(0.9f, 0.7f, 1f, 1f);  break;
                 case Mode.Cursor:     text = "CURSOR";            color = new Color(1f, 0.9f, 0.3f, 1f);  break;
+                case Mode.Eva:        text = "EVA KERBAL";        color = new Color(1f, 0.5f, 0.5f, 1f);  break;
+                case Mode.BackModEva: text = "BACK HOLD (EVA)";   color = new Color(1f, 0.75f, 0.75f, 1f); break;
                 default:              text = "FLIGHT";            color = Color.white;                     break;
             }
 
@@ -134,6 +138,13 @@ namespace ControllerEverywhere
               "<b>Right stick</b> select AG 1-8  <b>A</b> fire  <b>B</b> cancel" },
             { Mode.Cursor,
               "<b>R-stick</b> (or <b>L-stick</b>) move cursor  <b>A</b> click  <b>B</b> cancel / close dialog" },
+            { Mode.Eva,
+              "<b>L-stick</b> walk / jetpack dir  <b>R-stick</b> camera  <b>LB/RB</b> roll  " +
+              "<b>A</b> jump  <b>B</b> board airlock/seat  <b>X</b> plant flag  <b>Y</b> toggle jetpack  " +
+              "<b>DPad</b> SAS  <b>LS</b> SAS on/off  <b>RS</b> helmet lamp  " +
+              "<b>Back hold</b> kerbal modifier" },
+            { Mode.BackModEva,
+              "<b>X</b> next kerbal  <b>Y</b> let go / ladder hint  (all other Back-held bindings work as normal)" },
         };
 
         private static void DrawKeyStrip(Mode mode)

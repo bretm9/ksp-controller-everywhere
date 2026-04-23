@@ -153,6 +153,10 @@ namespace ControllerEverywhere
             {
                 DispatchPAWMode(p);
             }
+            else if (EvaActions.IsActive)
+            {
+                DispatchEvaMode(p);
+            }
             else if (MapView.MapIsEnabled)
             {
                 DispatchMapMode(p);
@@ -202,6 +206,16 @@ namespace ControllerEverywhere
         private bool DispatchBackModifier(ControllerInput.Pad p)
         {
             bool consumed = false;
+
+            if (EvaActions.IsActive)
+            {
+                // Back modifier while on EVA: kerbal-specific quick actions
+                // layered on top of the standard time warp + quick save/load
+                // + camera mode bindings below.
+                if (ControllerInput.Pressed(s => s.X)) { EvaActions.NextKerbal(); consumed = true; }
+                if (ControllerInput.Pressed(s => s.Y)) { EvaActions.ToggleLadder(); consumed = true; }
+                // Fall through for the common modifier set (warp / save / SAS).
+            }
 
             if (MapView.MapIsEnabled)
             {
@@ -294,6 +308,35 @@ namespace ControllerEverywhere
             PAWNavigator.Tick(p);
         }
 
+        // ---- EVA kerbal on foot / in jetpack ----------------------------------
+        private void DispatchEvaMode(ControllerInput.Pad p)
+        {
+            // Walk/jetpack direction from the left stick (local kerbal space).
+            EvaActions.Walk(p.LeftStick);
+
+            // Face buttons: console EVA scheme
+            if (ControllerInput.Pressed(s => s.A)) EvaActions.Jump();
+            if (ControllerInput.Pressed(s => s.B)) EvaActions.BoardNearest();
+            if (ControllerInput.Pressed(s => s.X)) EvaActions.PlantFlag();
+            if (ControllerInput.Pressed(s => s.Y)) EvaActions.ToggleJetpack();
+
+            // Bumpers — LB/RB still roll the kerbal (useful in jetpack).
+
+            // DPad SAS modes still work (kerbals have autopilot when jetpack on).
+            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Prograde);
+            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Retrograde);
+            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Normal);
+            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Antinormal);
+
+            // Stick clicks: LS toggles SAS (same as flight), RS toggles the
+            // helmet lamp (kerbals don't have RCS; lamp is the useful thing).
+            if (ControllerInput.Pressed(s => s.LS) && !_lsUsedAsChord) Toggle(KSPActionGroup.SAS);
+            if (ControllerInput.Pressed(s => s.RS)) EvaActions.ToggleLamp();
+            if (ControllerInput.Released(s => s.LS)) { _lsHeldTime = 0f; _lsUsedAsChord = false; }
+
+            if (ControllerInput.Pressed(s => s.Start)) TogglePauseMenu();
+        }
+
         // ---- OnFlyByWire (fly-axis driver) -------------------------------------
         private void OnFlyByWire(FlightCtrlState s)
         {
@@ -360,7 +403,8 @@ namespace ControllerEverywhere
                 inPaw:     PAWNavigator.AnyOpen,
                 agOpen:    _agRadial.IsOpen,
                 radialOpen:_actionRadial.IsOpen,
-                cursor:    VirtualCursor.Active);
+                cursor:    VirtualCursor.Active,
+                inEva:     EvaActions.IsActive);
 
             if (PAWNavigator.AnyOpen) PAWNavigator.DrawHighlight();
 
