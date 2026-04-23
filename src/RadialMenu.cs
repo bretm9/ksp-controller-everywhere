@@ -30,8 +30,6 @@ namespace ControllerEverywhere
 
         private float _rsHeldTime;
         private bool _rsWasDown;
-        private bool _pendingMapToggle;
-        public bool ConsumePendingMapToggle() { bool b = _pendingMapToggle; _pendingMapToggle = false; return b; }
 
         public void SetSlices(List<Slice> s) => Slices = s ?? new List<Slice>();
 
@@ -69,7 +67,8 @@ namespace ControllerEverywhere
             }
             else if (!p.RS && _rsWasDown)
             {
-                if (_rsHeldTime < OpenHoldTime) _pendingMapToggle = true;
+                // RS short tap — no-op. The consumer decides what RS-press means
+                // (toggle RCS / lamp). The radial only fires on a deliberate hold.
                 _rsHeldTime = 0f;
             }
 

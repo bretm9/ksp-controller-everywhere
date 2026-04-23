@@ -15,10 +15,13 @@ namespace ControllerEverywhere
     internal static class VirtualCursor
     {
         public static bool Active;
+        // External scenes (main menu, KSC overview) can force the cursor on.
+        public static bool ForceActive;
         private static Vector2 _pos;
         private static bool _initialized;
         private static float _dialogCheckTimer;
         private static int _cachedDialogCount;
+        private static bool _pauseOpen;
 
         public static float Speed = 900f;    // px/sec at full stick deflection
 
@@ -30,11 +33,15 @@ namespace ControllerEverywhere
             _dialogCheckTimer -= Time.unscaledDeltaTime;
             if (_dialogCheckTimer <= 0f)
             {
-                _dialogCheckTimer = 0.25f;
+                _dialogCheckTimer = 0.2f;
                 _cachedDialogCount = CountActiveDialogs();
+                // PauseMenu exposes a static isOpen; check it too in case the
+                // pause menu instance isn't in instantiatedPopUps (which varies
+                // across KSP versions).
+                try { _pauseOpen = PauseMenu.isOpen; } catch { _pauseOpen = false; }
             }
 
-            Active = _cachedDialogCount > 0;
+            Active = ForceActive || _pauseOpen || _cachedDialogCount > 0;
             if (!Active) { _initialized = false; return false; }
 
             if (!_initialized)

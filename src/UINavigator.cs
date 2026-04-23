@@ -1,12 +1,14 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace ControllerEverywhere
 {
-    // Generic DPad / stick-based UI nav driver for Unity's EventSystem. We translate
-    // DPad + left-stick direction into AxisEventData for Selectable navigation, and
-    // A/B into submit/cancel events.
+    // Generic DPad / stick UI nav driver. Uses manual spatial search across all
+    // active Selectables instead of Unity's Selectable.navigation (KSP UI
+    // doesn't reliably wire navigation.mode, so the stock AxisEventData pathway
+    // is often a no-op).
     internal static class UINavigator
     {
         private const float RepeatInitial = 0.4f;
@@ -23,7 +25,6 @@ namespace ControllerEverywhere
 
             bool hasDir = nav.sqrMagnitude > Threshold * Threshold;
 
-            // Edge-triggered nav: fire once on press, then repeat after initial delay
             if (hasDir)
             {
                 bool justPressed = lastNav.sqrMagnitude <= Threshold * Threshold;
@@ -34,46 +35,91 @@ namespace ControllerEverywhere
                     repeatTimer = justPressed ? RepeatInitial : RepeatInterval;
                 }
             }
-            else
-            {
-                repeatTimer = 0f;
-            }
+            else repeatTimer = 0f;
             lastNav = nav;
 
-            // Submit / cancel: fire on edge (press) only
             if (p.A && !_prevA) Submit();
             if (p.B && !_prevB) Cancel();
             _prevA = p.A; _prevB = p.B;
         }
 
         private static bool _prevA, _prevB;
+        private static readonly List<Selectable> _buffer = new List<Selectable>();
+
+        private static void CollectSelectables()
+        {
+            _buffer.Clear();
+            foreach (var s in Selectable.allSelectablesArray)
+            {
+                if (s == null) continue;
+                if (!s.IsInteractable()) continue;
+                if (!s.gameObject.activeInHierarchy) continue;
+                _buffer.Add(s);
+            }
+        }
 
         private static void Move(Vector2 dir)
         {
             var es = EventSystem.current;
             if (es == null) return;
 
-            var data = new AxisEventData(es);
-            data.moveVector = dir;
-            float ax = Mathf.Abs(dir.x), ay = Mathf.Abs(dir.y);
-            if (ax > ay) data.moveDir = dir.x > 0 ? MoveDirection.Right : MoveDirection.Left;
-            else         data.moveDir = dir.y > 0 ? MoveDirection.Up    : MoveDirection.Down;
+            CollectSelectables();
+            if (_buffer.Count == 0) return;
 
-            var sel = es.currentSelectedGameObject;
-            if (sel == null)
+            var current = es.currentSelectedGameObject;
+            if (current == null || !IsStillValid(current))
             {
-                // Nothing selected — pick the first interactable Selectable we can find
-                foreach (var s in Selectable.allSelectablesArray)
-                {
-                    if (s != null && s.IsInteractable() && s.gameObject.activeInHierarchy)
-                    {
-                        es.SetSelectedGameObject(s.gameObject);
-                        return;
-                    }
-                }
+                es.SetSelectedGameObject(_buffer[0].gameObject);
                 return;
             }
-            ExecuteEvents.Execute(sel, data, ExecuteEvents.moveHandler);
+
+            // Manual spatial search: pick the Selectable whose screen-space
+            // position best lines up with `dir` from the current selection.
+            Vector3 curWorld = current.transform.position;
+            Vector2 curScreen = WorldToScreen(current.GetComponent<RectTransform>(), curWorld);
+
+            Selectable best = null;
+            float bestScore = float.MaxValue;
+            Vector2 dirN = dir.normalized;
+
+            foreach (var s in _buffer)
+            {
+                if (s.gameObject == current) continue;
+                var rt = s.GetComponent<RectTransform>();
+                if (rt == null) continue;
+
+                Vector2 p2 = WorldToScreen(rt, s.transform.position);
+                Vector2 delta = p2 - curScreen;
+                if (delta.sqrMagnitude < 1f) continue;
+                Vector2 deltaN = delta.normalized;
+
+                // Projection onto desired direction.
+                float along = Vector2.Dot(deltaN, dirN);
+                if (along < 0.25f) continue;   // must be roughly in that direction
+
+                float dist = delta.magnitude;
+                // Score: prefer closer, and prefer more directional. Penalise
+                // targets far off-axis.
+                float perp = Mathf.Abs(Vector2.Dot(delta, new Vector2(-dirN.y, dirN.x)));
+                float score = dist + perp * 1.5f;
+                if (score < bestScore) { bestScore = score; best = s; }
+            }
+
+            if (best != null) es.SetSelectedGameObject(best.gameObject);
+        }
+
+        private static bool IsStillValid(GameObject go)
+        {
+            if (go == null || !go.activeInHierarchy) return false;
+            var sel = go.GetComponent<Selectable>();
+            return sel != null && sel.IsInteractable();
+        }
+
+        private static Vector2 WorldToScreen(RectTransform rt, Vector3 worldPos)
+        {
+            Canvas canvas = rt != null ? rt.GetComponentInParent<Canvas>() : null;
+            Camera cam = canvas != null ? canvas.worldCamera : null;
+            return RectTransformUtility.WorldToScreenPoint(cam, worldPos);
         }
 
         private static void Submit()
@@ -81,11 +127,15 @@ namespace ControllerEverywhere
             var es = EventSystem.current;
             var sel = es != null ? es.currentSelectedGameObject : null;
             if (sel == null) return;
-            var data = new BaseEventData(es);
-            ExecuteEvents.Execute(sel, data, ExecuteEvents.submitHandler);
-            // Many KSP buttons are Button components that don't wire submit — fire click as well.
+
+            // Prefer direct Button/Toggle — most KSP buttons don't wire submitHandler.
             var btn = sel.GetComponent<Button>();
-            if (btn != null && btn.IsInteractable()) btn.onClick.Invoke();
+            if (btn != null && btn.IsInteractable()) { btn.onClick.Invoke(); return; }
+
+            var tog = sel.GetComponent<Toggle>();
+            if (tog != null && tog.IsInteractable()) { tog.isOn = !tog.isOn; return; }
+
+            ExecuteEvents.Execute(sel, new BaseEventData(es), ExecuteEvents.submitHandler);
         }
 
         private static void Cancel()
@@ -93,8 +143,7 @@ namespace ControllerEverywhere
             var es = EventSystem.current;
             var sel = es != null ? es.currentSelectedGameObject : null;
             if (sel == null) return;
-            var data = new BaseEventData(es);
-            ExecuteEvents.Execute(sel, data, ExecuteEvents.cancelHandler);
+            ExecuteEvents.Execute(sel, new BaseEventData(es), ExecuteEvents.cancelHandler);
         }
     }
 }

@@ -137,9 +137,6 @@ namespace ControllerEverywhere
             if (p.Back) _backHeldTime += Time.unscaledDeltaTime;
             bool backModifier = p.Back && (_backHeldTime >= BackHoldThreshold || _backConsumed);
 
-            // RS tap (short press + release without menu) → toggle map (same as before)
-            if (_actionRadial.ConsumePendingMapToggle()) ToggleMapView();
-
             if (radialActive) return;
             // While the virtual cursor is active, skip flight dispatch — the
             // player is in a menu and A/B are being consumed by cursor clicks.
@@ -192,11 +189,17 @@ namespace ControllerEverywhere
             if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Normal);
             if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Antinormal);
 
-            // Stick clicks toggle SAS / RCS
-            if (ControllerInput.Pressed(s => s.LS) && !_lsUsedAsChord) Toggle(KSPActionGroup.SAS);
+            // LS toggles SAS on release (so LS-hold-for-zoom doesn't also fire SAS).
+            if (ControllerInput.Released(s => s.LS))
+            {
+                if (!_lsUsedAsChord && _lsHeldTime < 0.3f) Toggle(KSPActionGroup.SAS);
+                _lsHeldTime = 0f; _lsUsedAsChord = false;
+            }
+            // RS press toggles RCS. Radial opens only on hold past 0.25s, and the
+            // radial's hold timer is tracked separately — RS press + RCS toggle
+            // is safe because the radial requires the hold threshold before it
+            // consumes any input, so short presses never conflict.
             if (ControllerInput.Pressed(s => s.RS)) Toggle(KSPActionGroup.RCS);
-
-            if (ControllerInput.Released(s => s.LS)) { _lsHeldTime = 0f; _lsUsedAsChord = false; }
 
             if (ControllerInput.Pressed(s => s.Start)) TogglePauseMenu();
         }
@@ -291,10 +294,13 @@ namespace ControllerEverywhere
             if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Normal);
             if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Antinormal);
 
-            // Stick clicks same as normal
-            if (ControllerInput.Pressed(s => s.LS) && !_lsUsedAsChord) Toggle(KSPActionGroup.SAS);
+            // Stick clicks — same release-based behavior as normal mode.
+            if (ControllerInput.Released(s => s.LS))
+            {
+                if (!_lsUsedAsChord && _lsHeldTime < 0.3f) Toggle(KSPActionGroup.SAS);
+                _lsHeldTime = 0f; _lsUsedAsChord = false;
+            }
             if (ControllerInput.Pressed(s => s.RS)) Toggle(KSPActionGroup.RCS);
-            if (ControllerInput.Released(s => s.LS)) { _lsHeldTime = 0f; _lsUsedAsChord = false; }
 
             if (ControllerInput.Pressed(s => s.Start)) TogglePauseMenu();
 
@@ -328,11 +334,14 @@ namespace ControllerEverywhere
             if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Normal);
             if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Antinormal);
 
-            // Stick clicks: LS toggles SAS (same as flight), RS toggles the
-            // helmet lamp (kerbals don't have RCS; lamp is the useful thing).
-            if (ControllerInput.Pressed(s => s.LS) && !_lsUsedAsChord) Toggle(KSPActionGroup.SAS);
+            // Stick clicks: LS toggles SAS on release (tap-vs-chord), RS toggles
+            // the helmet lamp (kerbals don't have RCS; lamp is the useful thing).
+            if (ControllerInput.Released(s => s.LS))
+            {
+                if (!_lsUsedAsChord && _lsHeldTime < 0.3f) Toggle(KSPActionGroup.SAS);
+                _lsHeldTime = 0f; _lsUsedAsChord = false;
+            }
             if (ControllerInput.Pressed(s => s.RS)) EvaActions.ToggleLamp();
-            if (ControllerInput.Released(s => s.LS)) { _lsHeldTime = 0f; _lsUsedAsChord = false; }
 
             if (ControllerInput.Pressed(s => s.Start)) TogglePauseMenu();
         }
