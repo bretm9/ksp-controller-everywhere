@@ -28,7 +28,7 @@ is copied into your KSP install. On first launch it writes a default
 |----------------|----------------------------------------------------------|
 | Left stick     | Pitch / Yaw (also rover wheel steer on ground)           |
 | Right stick    | Camera orbit                                             |
-| LT / RT        | Throttle down / up                                       |
+| LT / RT        | Throttle down / up  (hold LS + LT/RT = camera zoom)      |
 | LB / RB        | Roll left / right                                        |
 | **LB + RB**    | Open/close PAW for part at center reticle                |
 | A              | Stage                                                    |
@@ -36,7 +36,8 @@ is copied into your KSP install. On first launch it writes a default
 | X              | Toggle SAS                                               |
 | Y              | Toggle RCS (held = translate mode, released = toggle)    |
 | Y + A          | Abort                                                    |
-| LS click       | Precision mode toggle                                    |
+| LS tap         | Precision mode toggle (release quickly)                  |
+| LS hold + LT/RT| Camera zoom out / in                                     |
 | RS click       | Toggle Map view                                          |
 | DPad ← / →     | Time warp slower / faster                                |
 | DPad ↑ / ↓     | Trim pitch up / down                                     |

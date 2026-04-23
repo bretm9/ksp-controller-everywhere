@@ -12,7 +12,7 @@ namespace ControllerEverywhere
     [KSPAddon(KSPAddon.Startup.Flight, false)]
     public class FlightAddon : MonoBehaviour
     {
-        private bool _hooked;
+        private Vessel _hookedVessel;
         private float _dvNudgeMultiplier = 1f;      // toggled fine/coarse for maneuver edit
         private RadialMenu _radial = new RadialMenu();
 
@@ -22,6 +22,10 @@ namespace ControllerEverywhere
         private float _backHeldTime;
         private bool  _metaAnnounced;
 
+        // LS is a tap-for-precision, hold-for-zoom-chord dual-role. Track which.
+        private float _lsHeldTime;
+        private bool  _lsUsedAsChord;
+
         void Awake()
         {
             Bindings.Load();
@@ -30,8 +34,8 @@ namespace ControllerEverywhere
 
         void Start()
         {
-            FlightInputHandler.OnFlyByWire += OnFlyByWire;
-            _hooked = true;
+            HookActiveVessel();
+            GameEvents.onVesselChange.Add(OnVesselChange);
             // 8-slice wheel; slice 0 is North and indices proceed clockwise.
             _radial.SetSlices(new System.Collections.Generic.List<RadialMenu.Slice>
             {
@@ -48,13 +52,48 @@ namespace ControllerEverywhere
 
         void OnDestroy()
         {
-            if (_hooked) FlightInputHandler.OnFlyByWire -= OnFlyByWire;
+            GameEvents.onVesselChange.Remove(OnVesselChange);
+            UnhookVessel();
+        }
+
+        // Per-vessel OnFlyByWire is the reliable callback (the static
+        // FlightInputHandler one doesn't always fire). We re-hook on vessel
+        // switch events so controls follow the active craft.
+        private void HookActiveVessel()
+        {
+            var v = FlightGlobals.ActiveVessel;
+            if (v == null || v == _hookedVessel) return;
+            UnhookVessel();
+            v.OnFlyByWire += OnFlyByWire;
+            _hookedVessel = v;
+        }
+
+        private void UnhookVessel()
+        {
+            if (_hookedVessel != null)
+            {
+                _hookedVessel.OnFlyByWire -= OnFlyByWire;
+                _hookedVessel = null;
+            }
+        }
+
+        private void OnVesselChange(Vessel v)
+        {
+            UnhookVessel();
+            if (v != null)
+            {
+                v.OnFlyByWire += OnFlyByWire;
+                _hookedVessel = v;
+            }
         }
 
         void Update()
         {
             ControllerInput.Poll();
             var p = ControllerInput.Current;
+
+            // Safety: re-hook in case vessel change fired before Start.
+            if (_hookedVessel != FlightGlobals.ActiveVessel) HookActiveVessel();
 
             // Debug overlay chord (LS + RS + Back held ~0.5s)
             DebugOverlay.Poll(p);
@@ -63,11 +102,18 @@ namespace ControllerEverywhere
             // gate camera/RS handling below.
             bool radialActive = _radial.Update(p);
 
-            // Right stick → camera (suppressed while radial open, since it's
-            // used for slice selection there).
+            // Track LS tap vs hold (hold = zoom chord)
+            if (p.LS)
+            {
+                _lsHeldTime += Time.unscaledDeltaTime;
+                if (Mathf.Abs(p.RightTrigger - p.LeftTrigger) > 0.05f) _lsUsedAsChord = true;
+            }
+
+            // Right stick → camera always. Triggers → camera zoom *only when LS
+            // is held* (chord); otherwise they throttle via OnFlyByWire.
             if (!radialActive)
             {
-                float zoom = p.RightTrigger - p.LeftTrigger;
+                float zoom = p.LS ? (p.RightTrigger - p.LeftTrigger) : 0f;
                 CameraControl.Flight(p.RightStick, zoom, Time.unscaledDeltaTime);
             }
 
@@ -122,9 +168,16 @@ namespace ControllerEverywhere
             if (ControllerInput.Released(s => s.Y) && !p.A) Toggle(KSPActionGroup.RCS);
             if (ControllerInput.Pressed(s => s.B)) Toggle(KSPActionGroup.Gear);
 
-            // LS click = precision mode (only if user isn't chording a bumper for PAW)
-            if (!(p.LB && p.RB) && ControllerInput.Pressed(s => s.LS) && FlightInputHandler.fetch != null)
-                FlightInputHandler.fetch.precisionMode = !FlightInputHandler.fetch.precisionMode;
+            // LS: tap = precision, hold = zoom chord (handled in Update above).
+            // Precision only toggles on quick release without any chord input.
+            if (ControllerInput.Released(s => s.LS))
+            {
+                bool wasTap = _lsHeldTime < 0.25f && !_lsUsedAsChord && !(p.LB && p.RB);
+                if (wasTap && FlightInputHandler.fetch != null)
+                    FlightInputHandler.fetch.precisionMode = !FlightInputHandler.fetch.precisionMode;
+                _lsHeldTime = 0f;
+                _lsUsedAsChord = false;
+            }
 
             // (RS click is handled at the top of Update via radial menu state — tap opens map, hold opens wheel.)
 
@@ -247,9 +300,8 @@ namespace ControllerEverywhere
         {
             var p = ControllerInput.Current;
 
-            // Suppress flight axis input when any modifier is held so we don't
-            // bleed stick motion into the ship while the user is menuing.
-            if (p.Back || p.Home) return;
+            // Suppress flight axis input when a mode modifier is held.
+            if (p.Back) return;
 
             float precision = (FlightInputHandler.fetch != null && FlightInputHandler.fetch.precisionMode) ? 0.5f : 1f;
             float pitchIn = -p.LeftStick.y;
@@ -260,11 +312,19 @@ namespace ControllerEverywhere
             s.yaw   = Mathf.Clamp(s.yaw   + yawIn   * precision, -1f, 1f);
             s.roll  = Mathf.Clamp(s.roll  + rollIn  * precision, -1f, 1f);
 
-            float dThr = (p.RightTrigger - p.LeftTrigger) * Time.unscaledDeltaTime;
-            s.mainThrottle = Mathf.Clamp01(s.mainThrottle + dThr);
+            // Throttle: triggers drive it UNLESS LS is held (then they zoom camera).
+            if (!p.LS)
+            {
+                float dThr = (p.RightTrigger - p.LeftTrigger) * Time.unscaledDeltaTime;
+                s.mainThrottle = Mathf.Clamp01(s.mainThrottle + dThr);
+                // axisThrottle is where KSP persists the throttle between frames.
+                // Non-public, so set via reflection.
+                if (FlightInputHandler.fetch != null)
+                    Reflector.Set(FlightInputHandler.fetch, "axisThrottle", s.mainThrottle);
 
-            s.wheelSteer    = Mathf.Clamp(s.wheelSteer    + yawIn, -1f, 1f);
-            s.wheelThrottle = Mathf.Clamp(s.wheelThrottle + (p.RightTrigger - p.LeftTrigger), -1f, 1f);
+                s.wheelThrottle = Mathf.Clamp(s.wheelThrottle + (p.RightTrigger - p.LeftTrigger), -1f, 1f);
+            }
+            s.wheelSteer = Mathf.Clamp(s.wheelSteer + yawIn, -1f, 1f);
 
             if (p.Y && FlightGlobals.ActiveVessel != null && FlightGlobals.ActiveVessel.ActionGroups[KSPActionGroup.RCS])
             {
