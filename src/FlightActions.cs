@@ -8,6 +8,21 @@ namespace ControllerEverywhere
     // Kept separate from FlightAddon to keep the dispatcher readable.
     internal static class FlightActions
     {
+        // ---- Camera shortcuts --------------------------------------------------
+
+        public static void CycleCameraMode()
+        {
+            if (FlightCamera.fetch == null) return;
+            FlightCamera.fetch.SetNextMode();
+            ScreenMessages.PostScreenMessage("Camera: " + FlightCamera.fetch.mode, 1f, ScreenMessageStyle.UPPER_CENTER);
+        }
+
+        public static void ResetCameraTarget()
+        {
+            if (FlightCamera.fetch == null) return;
+            FlightCamera.fetch.TargetActiveVessel();
+        }
+
         // ---- Time warp ----------------------------------------------------------
 
         public static void WarpFaster()

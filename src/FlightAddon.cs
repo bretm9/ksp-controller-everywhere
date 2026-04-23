@@ -13,7 +13,6 @@ namespace ControllerEverywhere
     public class FlightAddon : MonoBehaviour
     {
         private Vessel _hookedVessel;
-        private float _dvNudgeMultiplier = 1f;      // toggled fine/coarse for maneuver edit
         private RadialMenu _radial = new RadialMenu();
 
         // Back is dual-purpose: quick-hold = SAS mode picker, long-hold = meta modifier.
@@ -171,12 +170,26 @@ namespace ControllerEverywhere
             // Stage only when Y isn't held — Y+A is the abort chord.
             if (!p.Y && ControllerInput.Pressed(s => s.A)) Stage();
             if (ControllerInput.Pressed(s => s.X)) Toggle(KSPActionGroup.SAS);
-            // Y toggles RCS on press only if it's not being held as the translate/abort modifier.
             if (ControllerInput.Released(s => s.Y) && !p.A) Toggle(KSPActionGroup.RCS);
             if (ControllerInput.Pressed(s => s.B)) Toggle(KSPActionGroup.Gear);
 
-            // LS: tap = precision, hold = zoom chord (handled in Update above).
-            // Precision only toggles on quick release without any chord input.
+            HandleLSTapVsHold(p);
+            HandlePAWChord(p);
+
+            // DPad L/R = time warp; DPad U/D = camera mode.
+            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) FlightActions.WarpFaster();
+            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) FlightActions.WarpSlower();
+            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) FlightActions.CycleCameraMode();
+            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) FlightActions.ResetCameraTarget();
+
+            // Y held + A = abort (safety chord; stage is suppressed when Y held)
+            if (p.Y && ControllerInput.Pressed(s => s.A)) Toggle(KSPActionGroup.Abort);
+        }
+
+        // LS tap → precision. LS hold gets consumed by the trigger-zoom chord or
+        // (in map mode) a dpad UT nudge; either sets _lsUsedAsChord so tap doesn't fire.
+        private void HandleLSTapVsHold(ControllerInput.Pad p)
+        {
             if (ControllerInput.Released(s => s.LS))
             {
                 bool wasTap = _lsHeldTime < 0.25f && !_lsUsedAsChord && !(p.LB && p.RB);
@@ -185,22 +198,12 @@ namespace ControllerEverywhere
                 _lsHeldTime = 0f;
                 _lsUsedAsChord = false;
             }
+        }
 
-            // (RS click is handled at the top of Update via radial menu state — tap opens map, hold opens wheel.)
-
-            // LB+RB chord (both held, edge-triggered on second bumper) = open PAW at reticle.
-            // We detect the chord via "both down now, at least one was up last frame."
+        private void HandlePAWChord(ControllerInput.Pad p)
+        {
             if (p.LB && p.RB && (!ControllerInput.Previous.LB || !ControllerInput.Previous.RB))
                 FlightActions.ToggleReticlePAW();
-
-            // DPad L/R = time warp; DPad U/D = pitch trim.
-            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) FlightActions.WarpFaster();
-            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) FlightActions.WarpSlower();
-            if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) NudgeTrim(pitch: +0.05f);
-            if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) NudgeTrim(pitch: -0.05f);
-
-            // Y held + A = abort (kept as a safety chord; stage is suppressed when Y held)
-            if (p.Y && ControllerInput.Pressed(s => s.A)) Toggle(KSPActionGroup.Abort);
         }
 
         // ---- Hold Back: SAS mode picker ----------------------------------------
@@ -238,33 +241,61 @@ namespace ControllerEverywhere
             if (ControllerInput.Pressed(s => s.RS))    FlightActions.SwitchVessel(+1);
         }
 
-        // ---- Map view: maneuver node editor ------------------------------------
+        // ---- Map view: additive on top of normal flight ------------------------
+        // Full flight stays live (throttle, pitch/yaw, camera). Bumpers repurpose
+        // to cycle nodes, face buttons to node create/delete + SAS/RCS (kept),
+        // dpad to prograde/retrograde + time warp. Normal/antinormal and radial
+        // nudges live under the Y modifier. UT nudge on LS-hold + DPad ←→.
         private void DispatchMapMode(ControllerInput.Pad p)
         {
-            // Face buttons
-            if (ControllerInput.Pressed(s => s.A)) FlightActions.CreateManeuverNode();
-            if (ControllerInput.Pressed(s => s.B)) FlightActions.DeleteSelectedNode();
-            if (ControllerInput.Pressed(s => s.X)) _dvNudgeMultiplier = Mathf.Max(0.1f, _dvNudgeMultiplier * 0.5f);
-            if (ControllerInput.Pressed(s => s.Y)) _dvNudgeMultiplier = Mathf.Min(20f,  _dvNudgeMultiplier * 2f);
+            // Face buttons: A creates / Y-chord aborts; B deletes; X SAS; Y RCS.
+            if (!p.Y && ControllerInput.Pressed(s => s.A)) FlightActions.CreateManeuverNode();
+            if (ControllerInput.Pressed(s => s.B))         FlightActions.DeleteSelectedNode();
+            if (ControllerInput.Pressed(s => s.X))         Toggle(KSPActionGroup.SAS);
+            if (ControllerInput.Released(s => s.Y) && !p.A) Toggle(KSPActionGroup.RCS);
+            if (p.Y && ControllerInput.Pressed(s => s.A))  Toggle(KSPActionGroup.Abort);
 
-            // Bumpers cycle nodes
+            // Bumpers cycle maneuver nodes (replaces roll in map mode).
             if (ControllerInput.Pressed(s => s.LB)) FlightActions.CycleNode(-1);
             if (ControllerInput.Pressed(s => s.RB)) FlightActions.CycleNode(+1);
 
-            // DPad + triggers held = continuous nudges. Scale by unscaled dt so rate
-            // is independent of time warp (which we might want to set while planning).
-            float dt = Time.unscaledDeltaTime;
-            float base_ = 1.0f * _dvNudgeMultiplier;       // 1 m/s per second at neutral multiplier
-            float dProg = (p.Dpad.y > 0.5f ? 1f : p.Dpad.y < -0.5f ? -1f : 0f) * base_ * dt;
-            float dNorm = (p.Dpad.x < -0.5f ? 1f : p.Dpad.x > 0.5f ? -1f : 0f) * base_ * dt;
-            float dRad  = (p.RightTrigger - p.LeftTrigger) * base_ * dt * 0.5f;
-            float dUT   = ((p.RS ? 1f : 0f) - (p.LS ? 1f : 0f)) * 5f * dt * _dvNudgeMultiplier;
-            if (dProg != 0 || dNorm != 0 || dRad != 0 || dUT != 0)
-                FlightActions.NudgeNode(dRad, dNorm, dProg, dUT);
+            HandleLSTapVsHold(p);
+            HandlePAWChord(p);
 
-            // Time warp still reachable via Start (ignored for pause above when
-            // Home held; here, Start still pauses). Use LB+RB simultaneous to
-            // faster-warp, LB+RS to slower-warp — niche, skip for now.
+            // --- Time warp vs UT nudge on DPad ←→ ---
+            // Normal:       DPad ←→ = time warp
+            // LS-held chord: DPad ←→ = nudge UT earlier / later
+            float dt = Time.fixedDeltaTime > 0 ? Time.fixedDeltaTime : Time.unscaledDeltaTime;
+            if (p.LS)
+            {
+                float dUT = 0f;
+                if (p.Dpad.x < -0.5f) { dUT = -5f * dt; _lsUsedAsChord = true; }
+                if (p.Dpad.x >  0.5f) { dUT = +5f * dt; _lsUsedAsChord = true; }
+                if (dUT != 0f) FlightActions.NudgeNode(0, 0, 0, dUT);
+            }
+            else
+            {
+                if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) FlightActions.WarpFaster();
+                if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) FlightActions.WarpSlower();
+            }
+
+            // --- dV nudges on DPad ↑↓ + triggers ---
+            // No Y:     DPad ↑↓ = prograde / retrograde
+            // Y held:   DPad ↑↓ = normal / antinormal,  LT/RT = radial-in / radial-out
+            float rate = 1.5f;          // m/s per second of hold
+            float dProg = 0f, dNorm = 0f, dRad = 0f;
+            float dy = p.Dpad.y > 0.5f ? 1f : p.Dpad.y < -0.5f ? -1f : 0f;
+            if (p.Y)
+            {
+                dNorm = dy * rate * dt;
+                dRad  = (p.RightTrigger - p.LeftTrigger) * rate * dt;
+            }
+            else
+            {
+                dProg = dy * rate * dt;
+            }
+            if (dProg != 0f || dNorm != 0f || dRad != 0f)
+                FlightActions.NudgeNode(dRad, dNorm, dProg, 0f);
         }
 
         // ---- Reticle overlay + radial menu -------------------------------------
@@ -286,12 +317,14 @@ namespace ControllerEverywhere
                 }
             }
 
-            // Per-button glyphs + contextual cheat sheet.
+            // Per-button glyphs + always-visible mode badge & key strip +
+            // contextual cheat sheet.
             HudHints.Draw(
-                inSas:  _backHeldTime > 0f && _backHeldTime <  MetaHoldThreshold,
-                inMeta: _backHeldTime >= MetaHoldThreshold,
-                inMap:  MapView.MapIsEnabled,
-                inPaw:  PAWNavigator.AnyOpen);
+                inSas:      _backHeldTime > 0f && _backHeldTime <  MetaHoldThreshold,
+                inMeta:     _backHeldTime >= MetaHoldThreshold,
+                inMap:      MapView.MapIsEnabled,
+                inPaw:      PAWNavigator.AnyOpen,
+                radialOpen: _radial.IsOpen);
 
             // Highlight box around the currently-focused PAW selectable
             if (PAWNavigator.AnyOpen) PAWNavigator.DrawHighlight();
@@ -366,15 +399,6 @@ namespace ControllerEverywhere
         {
             var v = FlightGlobals.ActiveVessel;
             if (v != null) v.ActionGroups.ToggleGroup(g);
-        }
-
-        private void NudgeTrim(float pitch = 0f, float yaw = 0f, float roll = 0f)
-        {
-            var v = FlightGlobals.ActiveVessel;
-            if (v == null) return;
-            v.ctrlState.pitchTrim = Mathf.Clamp(v.ctrlState.pitchTrim + pitch, -1f, 1f);
-            v.ctrlState.yawTrim   = Mathf.Clamp(v.ctrlState.yawTrim   + yaw,   -1f, 1f);
-            v.ctrlState.rollTrim  = Mathf.Clamp(v.ctrlState.rollTrim  + roll,  -1f, 1f);
         }
 
         private void ToggleMapView()

@@ -5,22 +5,54 @@ using UnityEngine.UI;
 
 namespace ControllerEverywhere
 {
-    // On-screen help for controller users. Two parts:
-    //   1) Per-button glyphs overlaid on KSP UI (SAS/RCS/Gear toggles and the
-    //      10 navball SAS mode markers).
-    //   2) A contextual cheat sheet panel shown while a modifier is active
-    //      (quick-hold Back, long-hold Back, map view, PAW open).
+    // On-screen help for controller users:
+    //   - Always-visible mode badge (top-left corner) so you know what layer
+    //     you're in.
+    //   - Always-visible compact key strip (bottom-center) listing the key
+    //     bindings for the current mode.
+    //   - Contextual cheat sheet panel when a modifier is held (SAS / META /
+    //     MAP / PAW).
+    //   - Glyphs overlaid on KSP's SAS/RCS/Gear toggles and the navball SAS
+    //     mode markers.
     internal static class HudHints
     {
-        // Cached UI references — refreshed occasionally in case the UI spawns late.
+        public enum Mode { Flight, Map, Sas, Meta, Paw, Radial }
+
         private static List<ActionGroupToggleButton> _agToggles = new List<ActionGroupToggleButton>();
         private static VesselAutopilotUI _sasUi;
         private static float _refreshTimer;
 
         private static GUIStyle _glyphStyle;
-        private static GUIStyle _sheetStyle;
         private static GUIStyle _sheetKeyStyle;
         private static GUIStyle _sheetValStyle;
+        private static GUIStyle _badgeStyle;
+        private static GUIStyle _stripStyle;
+
+        public static void Draw(bool inSas, bool inMeta, bool inMap, bool inPaw, bool radialOpen = false)
+        {
+            EnsureStyles();
+            RefreshRefs();
+
+            // Decide current mode (precedence: Radial > Sas > Meta > Paw > Map > Flight)
+            Mode mode = Mode.Flight;
+            if      (radialOpen) mode = Mode.Radial;
+            else if (inSas)      mode = Mode.Sas;
+            else if (inMeta)     mode = Mode.Meta;
+            else if (inPaw)      mode = Mode.Paw;
+            else if (inMap)      mode = Mode.Map;
+
+            DrawModeBadge(mode);
+            DrawKeyStrip(mode);
+
+            DrawToggleGlyphs();
+            if (inSas) DrawSasModeGlyphs();
+
+            // Full cheat sheet (right side) only while a modifier is held or a
+            // menu mode is open — keeps the main flight view clean.
+            if      (inSas)  DrawCheatSheet("SAS MODES (hold Back)",     _sasSheet,  anchorRight: true);
+            else if (inMeta) DrawCheatSheet("META (long-hold Back)",     _metaSheet, anchorRight: true);
+            else if (inPaw)  DrawCheatSheet("PAW NAV",                   _pawSheet,  anchorRight: true);
+        }
 
         private static void EnsureStyles()
         {
@@ -33,18 +65,22 @@ namespace ControllerEverywhere
                     fontStyle = FontStyle.Bold
                 };
             }
-            if (_sheetStyle == null)
+            if (_sheetKeyStyle == null)
             {
-                _sheetStyle = new GUIStyle(GUI.skin.box)
-                {
-                    alignment = TextAnchor.UpperLeft,
-                    padding   = new RectOffset(8, 8, 6, 6),
-                    fontSize  = 12
-                };
                 _sheetKeyStyle = new GUIStyle(GUI.skin.label)
                 { fontSize = 12, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
                 _sheetValStyle = new GUIStyle(GUI.skin.label)
                 { fontSize = 12, alignment = TextAnchor.MiddleLeft };
+            }
+            if (_badgeStyle == null)
+            {
+                _badgeStyle = new GUIStyle(GUI.skin.label)
+                { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            }
+            if (_stripStyle == null)
+            {
+                _stripStyle = new GUIStyle(GUI.skin.label)
+                { fontSize = 12, alignment = TextAnchor.MiddleCenter, richText = true };
             }
         }
 
@@ -58,18 +94,69 @@ namespace ControllerEverywhere
             _sasUi = UnityEngine.Object.FindObjectOfType<VesselAutopilotUI>();
         }
 
-        public static void Draw(bool inSas, bool inMeta, bool inMap, bool inPaw)
+        // ---- Mode badge --------------------------------------------------------
+        private static void DrawModeBadge(Mode mode)
         {
-            EnsureStyles();
-            RefreshRefs();
+            string text;
+            Color color;
+            switch (mode)
+            {
+                case Mode.Flight: text = "FLIGHT";        color = new Color(0.6f, 0.85f, 1f, 1f); break;
+                case Mode.Map:    text = "MAP / PLANNING"; color = new Color(1f, 0.85f, 0.4f, 1f); break;
+                case Mode.Sas:    text = "SAS PICKER";    color = new Color(0.5f, 1f, 0.6f, 1f);  break;
+                case Mode.Meta:   text = "META";          color = new Color(1f, 0.6f, 1f, 1f);    break;
+                case Mode.Paw:    text = "PART MENU";     color = new Color(0.5f, 1f, 0.6f, 1f);  break;
+                case Mode.Radial: text = "ACTION WHEEL";  color = new Color(1f, 0.8f, 0.4f, 1f);  break;
+                default:          text = "FLIGHT";        color = Color.white;                     break;
+            }
 
-            DrawToggleGlyphs();
-            if (inSas) DrawSasModeGlyphs();
+            const float W = 150f, H = 22f;
+            float x = 12f, y = 12f;
+            UiDraw.Fill(new Rect(x, y, W, H), new Color(0f, 0f, 0f, 0.6f));
+            UiDraw.Outline(new Rect(x, y, W, H), color, 1f);
+            var prev = GUI.color;
+            GUI.color = color;
+            GUI.Label(new Rect(x, y, W, H), text, _badgeStyle);
+            GUI.color = prev;
+        }
 
-            if      (inSas)  DrawCheatSheet("SAS MODES (hold Back)",     _sasSheet,  anchorRight: true);
-            else if (inMeta) DrawCheatSheet("META (long-hold Back)",     _metaSheet, anchorRight: true);
-            else if (inMap)  DrawCheatSheet("MANEUVER EDITOR (map view)", _mapSheet, anchorRight: true);
-            else if (inPaw)  DrawCheatSheet("PAW NAV",                   _pawSheet,  anchorRight: true);
+        // ---- Compact key strip (bottom of screen) ------------------------------
+        private static readonly Dictionary<Mode, string> _strip = new Dictionary<Mode, string>
+        {
+            { Mode.Flight,
+              "<b>A</b> stage  <b>B</b> gear  <b>X</b> SAS  <b>Y</b> RCS  " +
+              "<b>LB/RB</b> roll  <b>LT/RT</b> thr  " +
+              "<b>L-stk</b> pitch/yaw  <b>R-stk</b> cam  " +
+              "<b>DPad ←→</b> warp  <b>DPad ↑</b> cam mode  <b>DPad ↓</b> recenter  " +
+              "<b>RS tap</b> map  <b>RS hold</b> wheel  <b>LS hold + LT/RT</b> zoom  " +
+              "<b>Back</b> SAS modes (long→META)" },
+            { Mode.Map,
+              "<b>A</b> +node  <b>B</b> −node  <b>LB/RB</b> prev/next node  <b>X</b> SAS  <b>Y</b> RCS  " +
+              "<b>DPad ↑↓</b> pro/retro dV  <b>DPad ←→</b> warp  " +
+              "<b>Y + DPad ↑↓</b> nrm/anti dV  <b>Y + LT/RT</b> radial dV  " +
+              "<b>LS hold + DPad ←→</b> UT  <b>RS tap</b> exit map" },
+            { Mode.Sas,
+              "<b>DPad ↑↓</b> Pro/Retro  <b>DPad ←→</b> Normal/Antinormal  " +
+              "<b>A/B</b> Target/AntiTarget  <b>X/Y</b> Radial in/out  " +
+              "<b>LB/RB</b> StabAssist/Maneuver" },
+            { Mode.Meta,
+              "<b>A B X Y</b> AG 1-4  <b>LB RB</b> AG 5-6  <b>DPad ↑↓←→</b> AG 7-10  " +
+              "<b>Start</b> Quick Load  <b>LS/RS</b> Switch Vessel" },
+            { Mode.Paw,
+              "<b>DPad</b> navigate  <b>A</b> click  <b>B</b> close  <b>LT/RT</b> slider  <b>LB+RB</b> re-aim" },
+            { Mode.Radial,
+              "<b>Right stick</b> select  <b>release RS</b> or <b>A</b> confirm  <b>B</b> cancel" },
+        };
+
+        private static void DrawKeyStrip(Mode mode)
+        {
+            if (!_strip.TryGetValue(mode, out var text)) return;
+            const float H = 22f;
+            float W = Mathf.Min(Screen.width - 24f, 1100f);
+            float x = (Screen.width - W) * 0.5f;
+            float y = Screen.height - H - 8f;
+            UiDraw.Fill(new Rect(x, y, W, H), new Color(0f, 0f, 0f, 0.55f));
+            GUI.Label(new Rect(x, y, W, H), text, _stripStyle);
         }
 
         // ---- Per-button glyphs on flight toggles -------------------------------
@@ -78,8 +165,6 @@ namespace ControllerEverywhere
             { KSPActionGroup.SAS,  "X"  },
             { KSPActionGroup.RCS,  "Y"  },
             { KSPActionGroup.Gear, "B"  },
-            // Custom01-10 get shown as "Back+A" etc. so the player can see which AG
-            // maps to which meta button. (Only drawn if UI is actually visible.)
             { KSPActionGroup.Custom01, "Back⏎+A"  },
             { KSPActionGroup.Custom02, "Back⏎+B"  },
             { KSPActionGroup.Custom03, "Back⏎+X"  },
@@ -107,7 +192,6 @@ namespace ControllerEverywhere
         private static void DrawSasModeGlyphs()
         {
             if (_sasUi == null || _sasUi.modeButtons == null) return;
-            // modeButtons is indexed by VesselAutopilot.AutopilotMode.
             for (int i = 0; i < _sasUi.modeButtons.Length; i++)
             {
                 var btn = _sasUi.modeButtons[i];
@@ -144,7 +228,6 @@ namespace ControllerEverywhere
             Camera cam = canvas != null ? canvas.worldCamera : null;
 
             Vector2 screenPos = RectTransformUtility.WorldToScreenPoint(cam, rt.position);
-            // IMGUI has Y growing downward from the top of the screen.
             float x = screenPos.x + offset.x;
             float y = (Screen.height - screenPos.y) + offset.y;
 
@@ -158,7 +241,7 @@ namespace ControllerEverywhere
             GUI.color = prev;
         }
 
-        // ---- Cheat sheets ------------------------------------------------------
+        // ---- Cheat sheet panels ------------------------------------------------
         private static readonly (string key, string val)[] _sasSheet = new[]
         {
             ("DPad ↑ / ↓", "Prograde / Retrograde"),
@@ -177,32 +260,22 @@ namespace ControllerEverywhere
             ("LS / RS",    "Switch vessel prev/next"),
         };
 
-        private static readonly (string key, string val)[] _mapSheet = new[]
-        {
-            ("A / B",      "Create / delete node"),
-            ("LB / RB",    "Cycle nodes"),
-            ("DPad ↑↓",    "Prograde ± dV"),
-            ("DPad ←→",    "Normal ± dV"),
-            ("LT / RT",    "Radial ∓ dV"),
-            ("LS / RS",    "UT earlier / later"),
-            ("X / Y",      "Step ×0.5 / ×2"),
-        };
-
         private static readonly (string key, string val)[] _pawSheet = new[]
         {
-            ("DPad",       "Navigate"),
+            ("DPad",       "Navigate (green box = focus)"),
             ("A",          "Click / toggle"),
             ("B",          "Close PAW"),
+            ("LT / RT",    "Adjust slider"),
             ("LB + RB",    "Re-aim at reticle"),
         };
 
         private static void DrawCheatSheet(string title, (string key, string val)[] rows, bool anchorRight)
         {
-            const float W = 280f;
+            const float W = 300f;
             float rowH = 18f;
             float H = 28f + rows.Length * rowH;
             float x = anchorRight ? Screen.width - W - 12f : 12f;
-            float y = Screen.height - H - 12f;
+            float y = Screen.height - H - 40f;
 
             var prev = GUI.color;
             GUI.color = new Color(0f, 0f, 0f, 0.7f);
@@ -213,8 +286,8 @@ namespace ControllerEverywhere
             for (int i = 0; i < rows.Length; i++)
             {
                 float ry = y + 28f + i * rowH;
-                GUI.Label(new Rect(x + 8f,        ry, 120f,       rowH), rows[i].key, _sheetKeyStyle);
-                GUI.Label(new Rect(x + 8f + 120f, ry, W - 16f - 120f, rowH), rows[i].val, _sheetValStyle);
+                GUI.Label(new Rect(x + 8f,        ry, 130f,       rowH), rows[i].key, _sheetKeyStyle);
+                GUI.Label(new Rect(x + 8f + 130f, ry, W - 16f - 130f, rowH), rows[i].val, _sheetValStyle);
             }
             GUI.color = prev;
         }
