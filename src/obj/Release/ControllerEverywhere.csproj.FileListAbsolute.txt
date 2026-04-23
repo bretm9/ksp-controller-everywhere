@@ -1,0 +1,7 @@
+/Users/bret/side-projects/ksp-controller-mod/src/obj/Release/ControllerEverywhere.csproj.AssemblyReference.cache
+/Users/bret/side-projects/ksp-controller-mod/src/obj/Release/ControllerEverywhere.GeneratedMSBuildEditorConfig.editorconfig
+/Users/bret/side-projects/ksp-controller-mod/src/obj/Release/ControllerEverywhere.csproj.CoreCompileInputs.cache
+/Users/bret/side-projects/ksp-controller-mod/src/bin/Release/ControllerEverywhere.dll
+/Users/bret/side-projects/ksp-controller-mod/src/bin/Release/ControllerEverywhere.pdb
+/Users/bret/side-projects/ksp-controller-mod/src/obj/Release/ControllerEverywhere.dll
+/Users/bret/side-projects/ksp-controller-mod/src/obj/Release/ControllerEverywhere.pdb

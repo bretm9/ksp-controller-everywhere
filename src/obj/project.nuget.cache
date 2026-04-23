@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "/HgAfsf1aeU=",
+  "success": true,
+  "projectFilePath": "/Users/bret/side-projects/ksp-controller-mod/src/ControllerEverywhere.csproj",
+  "expectedPackageFiles": [
+    "/Users/bret/.nuget/packages/microsoft.netframework.referenceassemblies/1.0.3/microsoft.netframework.referenceassemblies.1.0.3.nupkg.sha512",
+    "/Users/bret/.nuget/packages/microsoft.netframework.referenceassemblies.net48/1.0.3/microsoft.netframework.referenceassemblies.net48.1.0.3.nupkg.sha512"
+  ],
+  "logs": []
+}

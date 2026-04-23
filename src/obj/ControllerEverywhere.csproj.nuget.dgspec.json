@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "restore": {
+    "/Users/bret/side-projects/ksp-controller-mod/src/ControllerEverywhere.csproj": {}
+  },
+  "projects": {
+    "/Users/bret/side-projects/ksp-controller-mod/src/ControllerEverywhere.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/Users/bret/side-projects/ksp-controller-mod/src/ControllerEverywhere.csproj",
+        "projectName": "ControllerEverywhere",
+        "projectPath": "/Users/bret/side-projects/ksp-controller-mod/src/ControllerEverywhere.csproj",
+        "packagesPath": "/Users/bret/.nuget/packages/",
+        "outputPath": "/Users/bret/side-projects/ksp-controller-mod/src/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/Users/bret/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net48"
+        ],
+        "sources": {
+          "/opt/homebrew/Cellar/dotnet/9.0.8/libexec/library-packs": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net48": {
+            "targetAlias": "net48",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "9.0.100"
+      },
+      "frameworks": {
+        "net48": {
+          "targetAlias": "net48",
+          "dependencies": {
+            "Microsoft.NETFramework.ReferenceAssemblies": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.0.3, )",
+              "autoReferenced": true
+            }
+          },
+          "runtimeIdentifierGraphPath": "/opt/homebrew/Cellar/dotnet/9.0.8/libexec/sdk/9.0.109/RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

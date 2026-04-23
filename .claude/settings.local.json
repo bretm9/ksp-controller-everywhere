@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet --list-sdks)",
+      "Bash(dotnet tool *)",
+      "WebFetch(domain:wiki.kerbalspaceprogram.com)",
+      "Bash(grep -E \"^\\(FlightInputHandler|FlightCamera|PlanetariumCamera|KSCCameraManager|EditorLogic|HighLogic|KSPAddon|FlightGlobals|Vessel|FlightCtrlState|MapView|SpaceTracking\\)$\")",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(~/.dotnet/tools/dotnet-ildasm \"/Users/bret/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/KSP.app/Contents/Resources/Data/Managed/Assembly-CSharp.dll\")",
+      "Bash(export DOTNET_ROOT=/opt/homebrew/Cellar/dotnet/9.0.8/libexec)",
+      "Bash(~/.dotnet/tools/dotnet-ildasm \"/Users/bret/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/KSP.app/Contents/Resources/Data/Managed/Assembly-CSharp.dll\" --type FlightInputHandler)",
+      "WebFetch(domain:github.com)",
+      "Bash(gh --version)",
+      "Bash(curl -s -o /tmp/afbw-listing.json \"https://api.github.com/repos/linuxgurugamer/ksp-advanced-flybywire/contents/AFBW\")",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/tmp/afbw-listing.json'\\)\\); [print\\(x['name']\\) for x in d if isinstance\\(d, list\\)]\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/linuxgurugamer/ksp-advanced-flybywire/master/AFBW/AdvancedFlyByWire.cs\")",
+      "Read(//tmp/**)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/linuxgurugamer/ksp-advanced-flybywire/master/AFBW/CameraController.cs\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/linuxgurugamer/ksp-advanced-flybywire/master/AFBW/FlightManager.cs\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/linuxgurugamer/ksp-advanced-flybywire/master/AFBW/ksp-advanced-flybywire-osx.csproj\")",
+      "Bash(file \"/Users/bret/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/KSP.app/Contents/MacOS/\"*)",
+      "Read(//private/tmp/ksp-probe/**)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet run *)",
+      "Bash(rm -f ControllerEverywhere-0.1.0.zip)",
+      "Bash(zip -r ControllerEverywhere-0.1.0.zip GameData/ControllerEverywhere -x \"*.DS_Store\")",
+      "Bash(unzip -l ControllerEverywhere-0.1.0.zip)",
+      "Bash(cp /Users/bret/side-projects/ksp-controller-mod/GameData/ControllerEverywhere/controller.cfg '/Users/bret/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/GameData/ControllerEverywhere/controller.cfg')",
+      "Bash(cp /Users/bret/side-projects/ksp-controller-mod/GameData/ControllerEverywhere/README.md '/Users/bret/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/GameData/ControllerEverywhere/README.md')",
+      "Bash(shasum -a 256 '/Users/bret/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/GameData/ControllerEverywhere/Plugins/ControllerEverywhere.dll' /Users/bret/side-projects/ksp-controller-mod/GameData/ControllerEverywhere/Plugins/ControllerEverywhere.dll /Users/bret/side-projects/ksp-controller-mod/src/bin/Release/ControllerEverywhere.dll)",
+      "Bash(cp /Users/bret/side-projects/ksp-controller-mod/src/bin/Release/ControllerEverywhere.dll /Users/bret/side-projects/ksp-controller-mod/GameData/ControllerEverywhere/Plugins/ControllerEverywhere.dll)",
+      "Bash(cp /Users/bret/side-projects/ksp-controller-mod/README.md /Users/bret/side-projects/ksp-controller-mod/GameData/ControllerEverywhere/README.md)",
+      "Bash(cp /Users/bret/side-projects/ksp-controller-mod/README.md \"/Users/bret/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/GameData/ControllerEverywhere/README.md\")",
+      "Bash(zip -qr ControllerEverywhere-0.1.0.zip GameData/ControllerEverywhere -x \"*.DS_Store\")",
+      "Bash(shasum -a 256 \"/Users/bret/Library/Application Support/Steam/steamapps/common/Kerbal Space Program/GameData/ControllerEverywhere/Plugins/ControllerEverywhere.dll\" GameData/ControllerEverywhere/Plugins/ControllerEverywhere.dll src/bin/Release/ControllerEverywhere.dll)",
+      "Bash(grep -iE \"^\\(ActionGroup|SAS_|RCS_|Gear_|Stage_|UIStateToggle|NavBall\\)[A-Za-z]*$\")"
+    ]
+  }
+}
