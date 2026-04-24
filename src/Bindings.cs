@@ -26,6 +26,12 @@ namespace ControllerEverywhere
 
         public static bool DebugOverlay = false;
 
+        // "orbit": yellow cursor rides the vessel's orbit line, A places a node
+        //          where it is. Left stick slides it.
+        // "virtual": force the free-screen cursor on in map view so the player
+        //          can click stock KSP UI directly (orbit, nav buttons, etc.).
+        public static string MapCursorMode = "orbit";
+
         public static string ConfigPath =>
             Path.Combine(KSPUtil.ApplicationRootPath, "GameData/ControllerEverywhere/controller.cfg");
 
@@ -91,6 +97,7 @@ namespace ControllerEverywhere
                 case "input.invertRY":        if (bool.TryParse(v, out b))  InvertRY = b; break;
                 case "input.triggersBipolar": if (bool.TryParse(v, out b))  TriggersBipolar = b; break;
                 case "input.debugOverlay":    if (bool.TryParse(v, out b))  DebugOverlay = b; break;
+                case "map.cursorMode":        MapCursorMode = v.Trim().ToLower(); break;
                 case "editor.moveSpeed":      if (float.TryParse(v, out f)) EditorCamMoveSpeed = f; break;
                 case "editor.rotateStep":     if (float.TryParse(v, out f)) EditorPartRotateStep = f; break;
                 case "axis.joystick":         if (int.TryParse(v, out i)) JoystickIndex = i; break;
@@ -126,6 +133,10 @@ input.triggersBipolar = false
 
 # Toggle the debug axis/button overlay (also toggled in-game via LS + RS + Back chord).
 input.debugOverlay = false
+
+# Map-view cursor: ""orbit"" (yellow cursor slides along your orbit; A places a
+# node at the cursor) or ""virtual"" (free-screen mouse cursor over stock KSP UI).
+map.cursorMode = orbit
 
 # --- Editor ---
 editor.moveSpeed  = 4

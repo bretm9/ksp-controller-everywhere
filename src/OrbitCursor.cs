@@ -110,6 +110,10 @@ namespace ControllerEverywhere
         // ---- Rendering ---------------------------------------------------------
         public static void Draw()
         {
+            // OnGUI fires for both Layout and Repaint passes. getPositionAtUT is
+            // a Kepler solver and the world→screen projection is non-trivial.
+            // Skip the Layout pass so we only do the work once per frame.
+            if (Event.current == null || Event.current.type != EventType.Repaint) return;
             if (!MapView.MapIsEnabled || !_initialized) return;
             var v = FlightGlobals.ActiveVessel;
             if (v?.orbit == null) return;

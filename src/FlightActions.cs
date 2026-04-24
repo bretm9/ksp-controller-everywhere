@@ -302,6 +302,14 @@ namespace ControllerEverywhere
         }
 
         // Components for ManeuverNode.DeltaV: x = radial, y = normal, z = prograde.
+        // Nudges are BATCHED — accumulating each frame and flushed once per
+        // Update() pass via Flush(). OnGizmoUpdated triggers a full patched-conic
+        // recomputation, so calling it on every input axis every frame is very
+        // expensive; one call per frame is plenty.
+        private static Vector3d _pendingDv;
+        private static double _pendingDUT;
+        private static bool _pendingAny;
+
         public static void NudgeNode(float dRadial, float dNormal, float dProgr, float dUT)
         {
             if (SelectedNode == null)
@@ -310,9 +318,27 @@ namespace ControllerEverywhere
                 SelectedNode = s != null && s.maneuverNodes.Count > 0 ? s.maneuverNodes[0] : null;
                 if (SelectedNode == null) return;
             }
+            _pendingDv.x += dRadial;
+            _pendingDv.y += dNormal;
+            _pendingDv.z += dProgr;
+            _pendingDUT  += dUT;
+            _pendingAny = true;
+        }
+
+        public static void FlushPendingNudges()
+        {
+            if (!_pendingAny) return;
+            if (SelectedNode == null)
+            {
+                _pendingDv = Vector3d.zero; _pendingDUT = 0; _pendingAny = false;
+                return;
+            }
             var n = SelectedNode;
-            var dv = new Vector3d(n.DeltaV.x + dRadial, n.DeltaV.y + dNormal, n.DeltaV.z + dProgr);
-            n.OnGizmoUpdated(dv, n.UT + dUT);
+            var dv = new Vector3d(n.DeltaV.x + _pendingDv.x, n.DeltaV.y + _pendingDv.y, n.DeltaV.z + _pendingDv.z);
+            n.OnGizmoUpdated(dv, n.UT + _pendingDUT);
+            _pendingDv = Vector3d.zero;
+            _pendingDUT = 0;
+            _pendingAny = false;
         }
     }
 }

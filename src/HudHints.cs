@@ -26,6 +26,9 @@ namespace ControllerEverywhere
 
         public static void Draw(bool inBackMod, bool inMap, bool inPaw, bool agOpen, bool radialOpen, bool cursor, bool inEva = false)
         {
+            // OnGUI runs both Layout + Repaint each frame; skip Layout so we
+            // don't double every FindObjectsOfType and text-style creation.
+            if (Event.current != null && Event.current.type != EventType.Repaint) return;
             EnsureStyles();
             RefreshRefs();
 
@@ -76,7 +79,9 @@ namespace ControllerEverywhere
         {
             _refreshTimer -= Time.unscaledDeltaTime;
             if (_refreshTimer > 0f && _agToggles.Count > 0 && _sasUi != null && _mapToggleBtn != null) return;
-            _refreshTimer = 1.0f;
+            // 3 s instead of 1 s — these objects rarely appear / disappear, and
+            // FindObjectsOfType<Button>() over a full map-view scene is pricey.
+            _refreshTimer = 3.0f;
             _agToggles.Clear();
             _agToggles.AddRange(UnityEngine.Object.FindObjectsOfType<ActionGroupToggleButton>());
             _sasUi = UnityEngine.Object.FindObjectOfType<VesselAutopilotUI>();
@@ -143,20 +148,21 @@ namespace ControllerEverywhere
               "<b>A</b> stage  <b>B</b> cancel  <b>X</b> part menu  <b>Y</b> map  " +
               "<b>L-stick</b> pitch/yaw  <b>R-stick</b> camera  " +
               "<b>LT/RT</b> throttle  <b>LB/RB</b> roll  " +
-              "<b>DPad ↑↓</b> time warp  <b>DPad ←→</b> SAS Pro/Retro  " +
-              "<b>LS tap</b> SAS on/off  <b>LS hold</b> extended SAS modes  " +
-              "<b>RS</b> RCS on/off  <b>RS hold</b> action wheel  " +
+              "<b>DPad ↑↓</b> time warp  <b>DPad ←→</b> camera mode  " +
+              "<b>LS tap</b> RCS on/off  <b>RS tap</b> SAS on/off  <b>RS hold</b> SAS modes  " +
               "<b>Back tap</b> AGs  <b>Back hold</b> meta  <b>Start</b> pause" },
             { Mode.Map,
-              "<b>L-stick</b> orbit cursor  <b>A</b> place node at cursor  " +
-              "<b>B / Y</b> exit map  <b>X</b> delete node  " +
+              "<b>L-stick</b> orbit cursor (or mouse if map.cursorMode=virtual)  " +
+              "<b>A</b> place node at cursor  <b>B / Y</b> exit map  <b>X</b> delete node  " +
               "<b>LB/RB</b> prev/next node  <b>LT/RT</b> throttle  " +
               "<b>DPad ↑↓</b> time warp  <b>DPad ←→</b> ±prograde dV  " +
               "<b>R-stick</b> camera  <b>Back hold</b> Ap/Pe snap + fine tune" },
             { Mode.BackMod,
               "<b>A</b> Abort  <b>B</b> Toggle Gear  <b>X</b> Toggle Lights  <b>Y</b> Toggle IVA  " +
               "<b>LB/RB</b> prev/next vessel  <b>LT/RT</b> quick load/save  " +
-              "<b>LS</b> precision  <b>RS</b> camera mode" },
+              "<b>DPad ↑</b> warp to node  <b>DPad ↓</b> focus cam  " +
+              "<b>DPad ←</b> set target at reticle  <b>DPad →</b> clear target  " +
+              "<b>LS</b> precision" },
             { Mode.BackModMap,
               "<b>A</b> cursor → Ap  <b>B</b> cursor → Pe  <b>X</b> cursor → target  " +
               "<b>DPad ←→</b> normal/anti dV  <b>LT/RT</b> radial in/out dV  " +
@@ -198,8 +204,8 @@ namespace ControllerEverywhere
         private static readonly Dictionary<KSPActionGroup, (string label, bool big)> _toggleLabels =
             new Dictionary<KSPActionGroup, (string, bool)>
         {
-            { KSPActionGroup.SAS,      ("LS",        false) },
-            { KSPActionGroup.RCS,      ("RS",        false) },
+            { KSPActionGroup.SAS,      ("RS",        false) },
+            { KSPActionGroup.RCS,      ("LS",        false) },
             { KSPActionGroup.Gear,     ("Back+B",    true)  },
             { KSPActionGroup.Light,    ("Back+X",    true)  },
             { KSPActionGroup.Abort,    ("Back+A",    true)  },
@@ -251,23 +257,22 @@ namespace ControllerEverywhere
             }
         }
 
-        // SAS mode glyphs are tight — just arrows for the direct DPad bindings
-        // and LS+X compact chord labels for the rest (LS-held is the SAS mode
-        // modifier). Keeps the navball uncluttered.
+        // All SAS modes are chord bindings under RS-hold. The glyph is just
+        // the direction (arrow / button) the user presses while holding RS.
         private static string SasGlyphFor(VesselAutopilot.AutopilotMode m)
         {
             switch (m)
             {
-                case VesselAutopilot.AutopilotMode.Prograde:        return "←";
-                case VesselAutopilot.AutopilotMode.Retrograde:      return "→";
-                case VesselAutopilot.AutopilotMode.Normal:          return "LS+←";
-                case VesselAutopilot.AutopilotMode.Antinormal:      return "LS+→";
-                case VesselAutopilot.AutopilotMode.RadialIn:        return "LS+↑";
-                case VesselAutopilot.AutopilotMode.RadialOut:       return "LS+↓";
-                case VesselAutopilot.AutopilotMode.Target:          return "LS+LB";
-                case VesselAutopilot.AutopilotMode.AntiTarget:      return "LS+RB";
-                case VesselAutopilot.AutopilotMode.StabilityAssist: return "LS+A";
-                case VesselAutopilot.AutopilotMode.Maneuver:        return "LS+X";
+                case VesselAutopilot.AutopilotMode.Prograde:        return "RS+←";
+                case VesselAutopilot.AutopilotMode.Retrograde:      return "RS+→";
+                case VesselAutopilot.AutopilotMode.Normal:          return "RS+↑";
+                case VesselAutopilot.AutopilotMode.Antinormal:      return "RS+↓";
+                case VesselAutopilot.AutopilotMode.RadialIn:        return "RS+B";
+                case VesselAutopilot.AutopilotMode.RadialOut:       return "RS+Y";
+                case VesselAutopilot.AutopilotMode.Target:          return "RS+LB";
+                case VesselAutopilot.AutopilotMode.AntiTarget:      return "RS+RB";
+                case VesselAutopilot.AutopilotMode.StabilityAssist: return "RS+A";
+                case VesselAutopilot.AutopilotMode.Maneuver:        return "RS+X";
                 default: return null;
             }
         }
