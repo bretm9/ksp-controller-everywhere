@@ -253,28 +253,26 @@ namespace ControllerEverywhere
 
             if (MapView.MapIsEnabled)
             {
-                // --- Map-specific overrides (maneuver fine-tune) ---
+                // --- Map-specific Back chords ---
+                // A / B / X: snap the orbit cursor to Ap / Pe / target closest.
+                if (ControllerInput.Pressed(s => s.A)) { OrbitCursor.SnapToAp();          consumed = true; }
+                if (ControllerInput.Pressed(s => s.B)) { OrbitCursor.SnapToPe();          consumed = true; }
+                if (ControllerInput.Pressed(s => s.X)) { OrbitCursor.SnapToTargetClosest(); consumed = true; }
+                // Y still exits map.
+                if (ControllerInput.Pressed(s => s.Y)) { ToggleMapView(); consumed = true; }
+
+                // dV fine-tune that isn't covered by direct DPad ←→ (pro/retro).
                 float dt = Time.fixedDeltaTime > 0 ? Time.fixedDeltaTime : Time.unscaledDeltaTime;
                 float rate = 1.5f;
-
-                // Back + DPad ↑↓ = prograde / retrograde dV nudge (continuous).
-                if (p.Dpad.y >  0.5f) { FlightActions.NudgeNode(0, 0, +rate * dt, 0); consumed = true; }
-                if (p.Dpad.y < -0.5f) { FlightActions.NudgeNode(0, 0, -rate * dt, 0); consumed = true; }
                 // Back + DPad ←→ = normal / antinormal dV.
                 if (p.Dpad.x >  0.5f) { FlightActions.NudgeNode(0, +rate * dt, 0, 0); consumed = true; }
                 if (p.Dpad.x < -0.5f) { FlightActions.NudgeNode(0, -rate * dt, 0, 0); consumed = true; }
-                // Back + triggers = radial dV.
+                // Back + triggers = radial in/out dV.
                 float radialIn  = p.RightTrigger - p.LeftTrigger;
                 if (Mathf.Abs(radialIn) > 0.05f) { FlightActions.NudgeNode(radialIn * rate * dt, 0, 0, 0); consumed = true; }
-                // Back + bumpers = UT earlier / later.
+                // Back + bumpers = UT earlier / later on selected node.
                 if (p.LB) { FlightActions.NudgeNode(0, 0, 0, -5f * dt); consumed = true; }
                 if (p.RB) { FlightActions.NudgeNode(0, 0, 0, +5f * dt); consumed = true; }
-
-                // Back + A in map = delete selected node (vs Stability Assist
-                // elsewhere). More useful while editing a burn.
-                if (ControllerInput.Pressed(s => s.A)) { FlightActions.DeleteSelectedNode(); consumed = true; }
-                // Back + Y = exit map (same as Y alone; provided for muscle memory).
-                if (ControllerInput.Pressed(s => s.Y)) { ToggleMapView(); consumed = true; }
                 return consumed;
             }
 
@@ -302,26 +300,33 @@ namespace ControllerEverywhere
             return consumed;
         }
 
-        // ---- Map view: additive on top of normal flight -----------------------
+        // ---- Map view: orbit-cursor planning ----------------------------------
+        // Left stick slides an orbit cursor. A places a node at the cursor; DPad ←→
+        // does direct prograde/retrograde dV nudge on the selected node; Back-chord
+        // shortcuts snap the cursor to Ap / Pe / target closest approach.
         private void DispatchMapMode(ControllerInput.Pad p)
         {
-            // Face buttons — A creates nodes (stage is rare in map); B acts as
-            // "back" and exits map (console convention); X opens PAW; Y also
-            // exits map (matches flight toggle).
-            if (ControllerInput.Pressed(s => s.A)) FlightActions.CreateManeuverNode();
+            // Orbit cursor slides with the left stick.
+            OrbitCursor.Update(p);
+
+            // Face buttons.
+            if (ControllerInput.Pressed(s => s.A)) OrbitCursor.PlaceNode();
             if (ControllerInput.Pressed(s => s.B)) ToggleMapView();
-            if (ControllerInput.Pressed(s => s.X)) FlightActions.ToggleReticlePAW();
+            if (ControllerInput.Pressed(s => s.X)) FlightActions.DeleteSelectedNode();
             if (ControllerInput.Pressed(s => s.Y)) ToggleMapView();
 
-            // Bumpers cycle maneuver nodes (replaces roll in map mode — roll here is rare).
+            // Bumpers cycle maneuver nodes.
             if (ControllerInput.Pressed(s => s.LB)) FlightActions.CycleNode(-1);
             if (ControllerInput.Pressed(s => s.RB)) FlightActions.CycleNode(+1);
 
-            // DPad: same console scheme as flight — warp + primary SAS.
+            // DPad: warp (↑↓) + direct prograde/retrograde dV nudge (←→). Held
+            // dpad accumulates dV on the selected node at 1.5 m/s per second.
             if (ControllerInput.Pressed(s => s.Dpad.y >  0.5f)) FlightActions.WarpFaster();
             if (ControllerInput.Pressed(s => s.Dpad.y < -0.5f)) FlightActions.WarpSlower();
-            if (ControllerInput.Pressed(s => s.Dpad.x < -0.5f)) SetSas(VesselAutopilot.AutopilotMode.Prograde);
-            if (ControllerInput.Pressed(s => s.Dpad.x >  0.5f)) SetSas(VesselAutopilot.AutopilotMode.Retrograde);
+            float dtMap = Time.fixedDeltaTime > 0 ? Time.fixedDeltaTime : Time.unscaledDeltaTime;
+            float nudgeRate = 1.5f;
+            if (p.Dpad.x < -0.5f) FlightActions.NudgeNode(0, 0, -nudgeRate * dtMap, 0);
+            if (p.Dpad.x >  0.5f) FlightActions.NudgeNode(0, 0, +nudgeRate * dtMap, 0);
 
             // Stick clicks — same release-based behavior as normal mode.
             if (ControllerInput.Released(s => s.LS))
@@ -396,6 +401,20 @@ namespace ControllerEverywhere
                 return;
             }
 
+            // Map view — left stick is the orbit cursor. Don't bleed it into
+            // pitch/yaw (player isn't actively flying while planning).
+            if (MapView.MapIsEnabled)
+            {
+                float rollMap = (p.RB ? 1f : 0f) - (p.LB ? 1f : 0f);
+                s.roll = Mathf.Clamp(s.roll + rollMap, -1f, 1f);
+                float dThrM = (p.RightTrigger - p.LeftTrigger) * Time.fixedDeltaTime;
+                _targetThrottle = Mathf.Clamp01(_targetThrottle + dThrM);
+                s.mainThrottle = _targetThrottle;
+                if (FlightInputHandler.fetch != null)
+                    Reflector.Set(FlightInputHandler.fetch, "axisThrottle", _targetThrottle);
+                return;
+            }
+
             float precision = (FlightInputHandler.fetch != null && FlightInputHandler.fetch.precisionMode) ? 0.5f : 1f;
             float pitchIn = -p.LeftStick.y;
             float yawIn   =  p.LeftStick.x;
@@ -456,6 +475,9 @@ namespace ControllerEverywhere
                 inEva:     EvaActions.IsActive);
 
             if (PAWNavigator.AnyOpen) PAWNavigator.DrawHighlight();
+
+            // Orbit cursor (only visible in map view).
+            OrbitCursor.Draw();
 
             _actionRadial.OnGUI();
             _agRadial.OnGUI();

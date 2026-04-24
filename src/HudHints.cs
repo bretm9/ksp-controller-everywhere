@@ -148,18 +148,19 @@ namespace ControllerEverywhere
               "<b>RS</b> RCS on/off  <b>RS hold</b> action wheel  " +
               "<b>Back tap</b> AGs  <b>Back hold</b> meta  <b>Start</b> pause" },
             { Mode.Map,
-              "<b>A</b> create node  <b>B</b> exit map  <b>X</b> part menu  <b>Y</b> exit map  " +
+              "<b>L-stick</b> orbit cursor  <b>A</b> place node at cursor  " +
+              "<b>B / Y</b> exit map  <b>X</b> delete node  " +
               "<b>LB/RB</b> prev/next node  <b>LT/RT</b> throttle  " +
-              "<b>DPad ↑↓</b> time warp  <b>DPad ←→</b> SAS Pro/Retro  " +
-              "<b>LS hold</b> extended SAS  <b>Back hold</b> fine-tune maneuver" },
+              "<b>DPad ↑↓</b> time warp  <b>DPad ←→</b> ±prograde dV  " +
+              "<b>R-stick</b> camera  <b>Back hold</b> Ap/Pe snap + fine tune" },
             { Mode.BackMod,
               "<b>A</b> Abort  <b>B</b> Toggle Gear  <b>X</b> Toggle Lights  <b>Y</b> Toggle IVA  " +
               "<b>LB/RB</b> prev/next vessel  <b>LT/RT</b> quick load/save  " +
               "<b>LS</b> precision  <b>RS</b> camera mode" },
             { Mode.BackModMap,
-              "<b>DPad ↑↓</b> pro/retro dV  <b>DPad ←→</b> normal/anti dV  " +
-              "<b>LT/RT</b> radial in/out dV  <b>LB/RB</b> UT earlier/later  " +
-              "<b>A</b> delete node  <b>Y</b> exit map" },
+              "<b>A</b> cursor → Ap  <b>B</b> cursor → Pe  <b>X</b> cursor → target  " +
+              "<b>DPad ←→</b> normal/anti dV  <b>LT/RT</b> radial in/out dV  " +
+              "<b>LB/RB</b> UT earlier/later  <b>Y</b> exit map" },
             { Mode.Paw,
               "<b>DPad</b> navigate (green box = focus)  <b>A</b> click  " +
               "<b>B</b> close  <b>LT/RT</b> adjust slider" },
